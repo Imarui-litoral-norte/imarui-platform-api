@@ -43,7 +43,7 @@ aggregates are preserved verbatim because their separator is not part of the
 current SQL contract. An HTTP 400 returns `INVALID_JOURNEY_REQUEST`; procedure
 failures return HTTP 500 with `JOURNEY_READ_ERROR`, without JDBC details.
 
-The period snapshots provide the input for future historical views. The
-`/api/v1/journey/history/{indicator}` aggregation is pending a defined
-denominator and treatment of incomplete and expurged rows. BEES delivery
+The period snapshots also support `/api/v1/journey/history/{indicator}`.
+See [journey-history.md](journey-history.md) for its aggregation denominator,
+calendar context, previous-year alignment and incomplete/expurged handling. BEES delivery
 progress remains in IFW-29 and is not part of the TR response yet.
