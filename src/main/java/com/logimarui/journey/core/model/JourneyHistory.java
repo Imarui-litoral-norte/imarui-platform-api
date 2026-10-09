@@ -9,11 +9,15 @@ public record JourneyHistory(
         LocalDate from, LocalDate to, LocalDate contextFrom, LocalDate contextTo,
         LocalDate asOf, LocalDateTime snapshotAt, String population, String role,
         boolean hasLiveOrigin, Counts summary, List<Day> daily,
-        List<Collaborator> collaborators, List<Day> previousYearDaily
+        List<Collaborator> collaborators, List<Day> previousYearDaily, List<TeamObservation> team
 ) {
     public record Counts(long total, long attained, long notAttained, long pending,
                          long unavailable, long evaluated, Double adherence,
                          long distinctMaps, long expurged, long anomalies) {}
+    /** One map/person observation, before the shared expurge filter, for the educators' report. */
+    public record TeamObservation(LocalDate date, Long map, Long employeeCode, String employeeName,
+                                  String role, String fleet, LocalDate departureDate, Boolean expurgePresent,
+                                  Counts counts, Long seconds, Boolean journeyExceeded) {}
     public record Day(LocalDate date, Counts counts) {}
     public record Collaborator(Long employeeCode, String employeeName, String role, Counts counts) {}
 }
