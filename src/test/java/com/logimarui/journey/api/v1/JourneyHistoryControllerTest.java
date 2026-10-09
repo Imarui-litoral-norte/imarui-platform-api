@@ -20,7 +20,7 @@ class JourneyHistoryControllerTest {
         var day = LocalDate.of(2026, 10, 6);
         var empty = new JourneyHistory.Counts(0, 0, 0, 0, 0, 0, null, 0, 0, 0);
         when(service.history(anyString(), any(), anyString(), anyString(), anyBoolean(), anyString())).thenReturn(
-                new JourneyHistory(day, day, day, day, day, null, "MAP", "motorista", false, empty, List.of(), List.of(), List.of()));
+                new JourneyHistory(day, day, day, day, day, null, "MAP", "motorista", false, empty, List.of(), List.of(), List.of(), List.of()));
         mvc.perform(get("/api/v1/journey/history/tr").param("from", "2026-10-06").param("to", "2026-10-06")
                 .param("search", "joao").param("scope", "earlier").param("includePrevious", "false"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.summary.adherence").isEmpty())

@@ -138,6 +138,64 @@ class JourneyHistoryServiceTest {
         assertThatThrownBy(() -> service.history("tr", query(DAY, DAY, null, null, "all"), "", "bad", false)).isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test void teamReportRetainsExpurgesAndUsesOfficialJlForEachPersonsMap() {
+        var base = tr(DAY, 1L, 100L, "motorista", true, "FINALIZADO", false, false);
+        var c = base.context();
+        var fleet = new OperationalContext(c.date(), c.map(), c.mapOrigin(), c.registration(), c.employeeCode(),
+                c.role(), c.employeeName(), c.vehicle(), c.plate(), "FROTA A", c.mapDriverCode(), c.routeSupervisorCode(), c.routeSupervisorName());
+        var first = new TrItem(fleet, DAY.atTime(8, 0), null, base.snapshotAt(), null,
+                new IndicatorResult(null, 3600L, 33600L, "FINALIZADO", null, true, false), null, base.expurge());
+        var second = tr(DAY.plusDays(1), 2L, 100L, "motorista", false, "FINALIZADO", true, false);
+        var third = tr(DAY.plusDays(1), 3L, 100L, "motorista", null, "EM_ANDAMENTO", false, false);
+        stubTr(List.of(first, first, second, third));
+        when(reader.jl(any(), any(), eq("ponto"))).thenReturn(List.of(jl(first, false, "FINALIZADO"), jl(second, true, "FINALIZADO")));
+        var h = service.history("tr", query(DAY, DAY.plusDays(2), null, null, "not_expurged"), "", "all", false);
+        assertThat(h.summary().total()).isEqualTo(2);
+        assertThat(h.team()).hasSize(3);
+        assertThat(h.team().get(0).fleet()).isEqualTo("FROTA A");
+        assertThat(h.team().get(0).departureDate()).isEqualTo(DAY);
+        assertThat(h.team().get(0).seconds()).isEqualTo(3600L);
+        assertThat(h.team().get(0).journeyExceeded()).isTrue(); // TR attained but JL exceeded.
+        assertThat(h.team().get(1).expurgePresent()).isTrue();
+        assertThat(h.team().get(1).journeyExceeded()).isFalse(); // TR failed but JL attained.
+        assertThat(h.team().get(2).journeyExceeded()).isNull();
+        assertThat(h.team().get(2).seconds()).isNull();
+    }
+
+    @Test void teamReportDoesNotFabricateDurationOrJourneyOutcome() {
+        var anomalous = tr(DAY, 1L, 100L, "motorista", false, "FINALIZADO", false, true);
+        var base = tr(DAY, 2L, 101L, "motorista", true, "FINALIZADO", false, false);
+        var negative = new TrItem(base.context(), null, null, base.snapshotAt(), null,
+                new IndicatorResult(null, -1L, null, "FINALIZADO", null, true, false), null,
+                new Expurge(null, null, null, null, null, null, null));
+        stubTr(List.of(anomalous, negative, negative));
+        var h = service.history("tr", query(DAY, DAY, null, null, "all"), "", "all", false);
+        assertThat(h.team()).allMatch(row -> row.seconds() == null && row.journeyExceeded() == null);
+        assertThat(h.team().get(1).expurgePresent()).isNull();
+        when(reader.jl(any(), any(), any())).thenReturn(List.of(jl(base, false, "EM_ANDAMENTO")));
+        var pending = service.history("jl", query(DAY, DAY, "ponto", null, "all"), "", "all", false);
+        assertThat(pending.team().get(0).journeyExceeded()).isNull();
+        assertThat(pending.team().get(0).seconds()).isNull();
+    }
+
+    private static JlItem jl(TrItem row, Boolean achieved, String status) {
+        return new JlItem(row.context(), "ponto", null, null, null, null, row.mapDepartureAt(), null,
+                null, null, null, null, null, row.snapshotAt(), null, null, null, null, null, null,
+                new IndicatorResult(null, 45000L, 37200L, status, null, achieved, false), null, null, row.expurge());
+    }
+
+    @Test void expurgeFilterStillPrecedesCrewSearchForChartsAndDepartureDateIsReal() {
+        var driver = tr(DAY, 1L, 100L, "motorista", true, "FINALIZADO", false, false);
+        var departed = new TrItem(driver.context(), DAY.plusDays(1).atTime(0, 10), null,
+                driver.snapshotAt(), null, driver.tr(), null, driver.expurge());
+        var helper = tr(DAY, 1L, 101L, "ajudante", true, "FINALIZADO", true, false);
+        stubTr(List.of(departed, helper));
+        var h = service.history("tr", query(DAY, DAY, null, null, "not_expurged"), "Pessoa 101", "all", false);
+        assertThat(h.summary().total()).isZero();
+        assertThat(h.team()).hasSize(1);
+        assertThat(h.team().get(0).departureDate()).isEqualTo(DAY.plusDays(1));
+    }
+
     private void stubTr(List<TrItem> rows) {
         when(reader.tr(any(), any())).thenAnswer(invocation -> rows.stream().filter(r ->
                 !r.context().date().isBefore(invocation.getArgument(0, LocalDate.class)) &&

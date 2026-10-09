@@ -32,7 +32,7 @@ nullable `adherence`, `distinctMaps`, `expurged`, `anomalies`.
 * Exact repeated snapshots are deduplicated; newer versions replace older ones.
   Conflicting outcomes at the same snapshot or across replicated map facts become
   unavailable. Missing map/employee identity is unavailable, never a fabricated pass.
-* Expurge is included by default and filtered explicitly by the existing service.
+* Expurge is included by default and filtered explicitly for the analytical series before crew search.
   Anomalies are reported without silently changing the procedure's verdict.
 * Crew search finds a map via any retained team member before the analysis role
   is selected. Other explicit filters still apply first.
@@ -50,3 +50,24 @@ actual intersections instead of dropping dates to force four/five buckets.
 Silent live refresh may request `includePrevious=false`; the client retains the
 previous-year series for the same filter key. Error responses use the existing
 Journey 400/500 advice. No persistent cache or external writes are introduced.
+
+## Educators team report
+
+`team` contains one selected date/map/person observation with `employeeCode`,
+`employeeName`, `role`, `fleet`, nullable `departureDate`, nullable `expurgePresent`, official
+`counts`, nullable `seconds`, and nullable `journeyExceeded`. Missing identities
+are omitted from this report. It follows dates, map, collaborator, population,
+crew search and scope, but precedes the shared expurge filter so the report's own
+expurge selection is independent. The graph and summary filters are unchanged.
+
+Durations are included only for closed cycles with nonnegative numeric seconds
+and no temporal-order anomaly. The client averages those samples after filtering
+maps by fleet/expurge and hiding selected people. Departure dates come from the real
+map departure timestamp, which may differ from the map date after midnight. Duplicate same-day exits appear once in the date list.
+
+Journey overruns use the closed official JL outcome joined by date/map/person,
+never the selected indicator's failed count. Non-JL views read JL only for the
+selected period in monthly chunks. TR uses JL `ponto`; other views use the
+selected mode. Missing/open JL is NULL, not zero overruns. The UI marks partial
+coverage. The report displays TML/TI means as mm:ss and TR/JL means as hh:mm,
+without wrapping durations at 24 hours.

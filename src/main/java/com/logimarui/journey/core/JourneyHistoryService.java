@@ -50,8 +50,30 @@ public class JourneyHistoryService {
             throw new IllegalArgumentException("Invalid populationRole");
         String role = query.role() == null ? populationRole : query.role();
         boolean perMap = indicator.equals("tr") || indicator.equals("jl") && "mpd".equals(query.mode());
-        List<Fact> readFacts = read(indicator, query, first, min(last, today), role, search, scope, today);
-        List<Fact> current = perMap ? coherentMapFacts(readFacts) : readFacts;
+        List<Fact> allFacts = read(indicator, query, first, min(last, today));
+        List<Fact> readFacts = selectFacts(allFacts, role, search, scope, today);
+        List<Fact> filtered = selectFacts(filterExpurge(allFacts, query.expurge()), role, search, scope, today);
+        List<Fact> current = perMap ? coherentMapFacts(filtered) : filtered;
+        List<Fact> teamFacts = (perMap ? coherentMapFacts(readFacts) : readFacts).stream()
+                .filter(f -> within(f.context.date(), query.from(), query.to()))
+                .filter(f -> f.context.map() != null && f.context.employeeCode() != null).toList();
+        Map<String, Fact> journeyFacts = new HashMap<>();
+        if (!indicator.equals("jl") && !teamFacts.isEmpty()) {
+            // TR has no mode: educators' journey overrun uses the point-based JL in that view.
+            var jlQuery = new JourneyQuery(query.from(), query.to(),
+                    query.mode() == null ? "ponto" : query.mode(), query.map(), query.employeeCode(), query.role(), "all");
+            var jlFacts = selectFacts(read("jl", jlQuery, query.from(), min(query.to(), today)), role, "", scope, today);
+            ("mpd".equals(jlQuery.mode()) ? coherentMapFacts(jlFacts) : jlFacts)
+                    .forEach(f -> journeyFacts.put(identity(f.context), f));
+        }
+        List<JourneyHistory.TeamObservation> team = teamFacts.stream().map(f -> {
+            Fact jl = indicator.equals("jl") ? f : journeyFacts.get(identity(f.context));
+            Boolean exceeded = jl == null || !Set.of(Outcome.ATTAINED, Outcome.NOT_ATTAINED).contains(jl.outcome)
+                    ? null : jl.outcome == Outcome.NOT_ATTAINED;
+            return new JourneyHistory.TeamObservation(f.context.date(), f.context.map(), f.context.employeeCode(),
+                    Objects.toString(f.context.employeeName(), "Colaborador #" + f.context.employeeCode()),
+                    role, f.context.fleet(), f.departureDate, f.expurged, counts(List.of(f), false), f.seconds, exceeded);
+        }).toList();
         List<Fact> selected = current.stream().filter(f -> within(f.context.date(), query.from(), query.to())).toList();
         var people = new TreeMap<Long, List<Fact>>();
         selected.stream().filter(f -> f.context.employeeCode() != null)
@@ -70,7 +92,7 @@ public class JourneyHistoryService {
                 if (end.isBefore(month.atDay(1))) continue;
                 LocalDate priorFirst = month.minusYears(1).atDay(1);
                 LocalDate priorLast = end.minusYears(1); // LocalDate clamps February 29 safely.
-                var facts = read(indicator, query, priorFirst, priorLast, role, search, scope, today);
+                var facts = selectFacts(filterExpurge(read(indicator, query, priorFirst, priorLast), query.expurge()), role, search, scope, today);
                 previous.addAll(days(facts, priorFirst, priorLast, perMap));
             }
         }
@@ -79,23 +101,22 @@ public class JourneyHistoryService {
         return new JourneyHistory(query.from(), query.to(), first, last, today, snapshot,
                 perMap ? "MAP" : "MAP_EMPLOYEE", role,
                 current.stream().anyMatch(f -> "LIVE".equals(f.context.mapOrigin())),
-                counts(selected, perMap), days(current, first, last, perMap), collaborators, List.copyOf(previous));
+                counts(selected, perMap), days(current, first, last, perMap), collaborators, List.copyOf(previous), team);
     }
 
     /** Reads bounded monthly chunks, discards heavyweight DTOs and keeps only compact facts. */
-    private List<Fact> read(String indicator, JourneyQuery filters, LocalDate from, LocalDate to,
-                            String role, String search, String scope, LocalDate today) {
+    private List<Fact> read(String indicator, JourneyQuery filters, LocalDate from, LocalDate to) {
         Map<String, Fact> unique = new LinkedHashMap<>();
         long missingIdentity = 0;
         for (LocalDate start = from; !start.isAfter(to);) {
             LocalDate end = min(start.with(TemporalAdjusters.lastDayOfMonth()), to);
             // Search considers the complete crew before selecting the analytical population.
-            var query = new JourneyQuery(start, end, filters.mode(), filters.map(), filters.employeeCode(), filters.role(), filters.expurge());
+            var query = new JourneyQuery(start, end, filters.mode(), filters.map(), filters.employeeCode(), filters.role(), "all");
             List<Fact> chunk = switch (indicator) {
-                case "tml" -> facts(journey.tml(query).items(), TmlItem::context, TmlItem::snapshotAt, TmlItem::tml, TmlItem::expurge);
-                case "tr" -> facts(journey.tr(query).items(), TrItem::context, TrItem::snapshotAt, TrItem::tr, TrItem::expurge);
-                case "ti" -> facts(journey.ti(query).items(), TiItem::context, TiItem::snapshotAt, TiItem::ti, TiItem::expurge);
-                default -> facts(journey.jl(query).items(), JlItem::context, JlItem::snapshotAt, JlItem::jl, JlItem::expurge);
+                case "tml" -> facts(journey.tml(query).items(), TmlItem::context, TmlItem::snapshotAt, TmlItem::tml, TmlItem::expurge, TmlItem::mapDepartureAt);
+                case "tr" -> facts(journey.tr(query).items(), TrItem::context, TrItem::snapshotAt, TrItem::tr, TrItem::expurge, TrItem::mapDepartureAt);
+                case "ti" -> facts(journey.ti(query).items(), TiItem::context, TiItem::snapshotAt, TiItem::ti, TiItem::expurge, TiItem::mapDepartureAt);
+                default -> facts(journey.jl(query).items(), JlItem::context, JlItem::snapshotAt, JlItem::jl, JlItem::expurge, JlItem::mapDepartureAt);
             };
             for (Fact f : chunk) {
                 if (f.context.date() == null || !within(f.context.date(), start, end)) continue;
@@ -105,7 +126,10 @@ public class JourneyHistoryService {
             }
             start = end.plusDays(1);
         }
-        List<Fact> all = new ArrayList<>(unique.values());
+        return new ArrayList<>(unique.values());
+    }
+
+    private static List<Fact> selectFacts(List<Fact> all, String role, String search, String scope, LocalDate today) {
         String term = normalize(search);
         Set<String> matchingMaps = new HashSet<>();
         if (!term.isEmpty()) all.stream().filter(f -> searchable(f.context).contains(term))
@@ -119,7 +143,7 @@ public class JourneyHistoryService {
 
     private static <T> List<Fact> facts(List<T> items, Function<T, OperationalContext> context,
                                        Function<T, LocalDateTime> snapshot, Function<T, IndicatorResult> result,
-                                       Function<T, Expurge> expurge) {
+                                       Function<T, Expurge> expurge, Function<T, LocalDateTime> departure) {
         return items.stream().map(item -> {
             var c = context.apply(item);
             var r = result.apply(item);
@@ -129,8 +153,19 @@ public class JourneyHistoryService {
                 outcome = r.achieved() ? Outcome.ATTAINED : Outcome.NOT_ATTAINED;
             if (c.map() == null || c.employeeCode() == null) outcome = Outcome.UNAVAILABLE;
             var e = expurge.apply(item);
-            return new Fact(c, snapshot.apply(item), outcome, e != null && Boolean.TRUE.equals(e.present()),
-                    r != null && Boolean.TRUE.equals(r.temporalOrderAnomaly()));
+            boolean anomaly = r != null && Boolean.TRUE.equals(r.temporalOrderAnomaly());
+            Long seconds = r != null && !anomaly && r.seconds() != null && r.seconds() >= 0 &&
+                    Set.of("FINALIZADO", "CONCLUIDO").contains(Objects.toString(r.lifecycleStatus(), "")) ? r.seconds() : null;
+            return new Fact(c, snapshot.apply(item), outcome, e == null ? null : e.present(),
+                    anomaly, seconds, departure.apply(item) == null ? null : departure.apply(item).toLocalDate());
+        }).toList();
+    }
+
+    private static List<Fact> filterExpurge(List<Fact> facts, String filter) {
+        return facts.stream().filter(f -> switch (filter) {
+            case "expurged" -> Boolean.TRUE.equals(f.expurged);
+            case "not_expurged" -> Boolean.FALSE.equals(f.expurged);
+            default -> true;
         }).toList();
     }
 
@@ -144,7 +179,9 @@ public class JourneyHistoryService {
 
     private static Fact combine(Fact a, Fact b) {
         return new Fact(a.context, a.snapshot, a.outcome == b.outcome ? a.outcome : Outcome.UNAVAILABLE,
-                a.expurged || b.expurged, a.anomaly || b.anomaly);
+                Boolean.TRUE.equals(a.expurged) || Boolean.TRUE.equals(b.expurged) ? Boolean.TRUE :
+                        Boolean.FALSE.equals(a.expurged) && Boolean.FALSE.equals(b.expurged) ? Boolean.FALSE : null,
+                a.anomaly || b.anomaly, Objects.equals(a.seconds, b.seconds) ? a.seconds : null, Objects.equals(a.departureDate, b.departureDate) ? a.departureDate : null);
     }
 
     /** A replicated map verdict must also stay consistent in each person's analytical series. */
@@ -153,7 +190,7 @@ public class JourneyHistoryService {
         facts.stream().filter(f -> f.context.map() != null && f.context.employeeCode() != null).forEach(f ->
                 outcomes.merge(mapIdentity(f.context), f.outcome, (a, b) -> a == b ? a : Outcome.UNAVAILABLE));
         return facts.stream().map(f -> f.context.map() == null || f.context.employeeCode() == null ? f :
-                new Fact(f.context, f.snapshot, outcomes.get(mapIdentity(f.context)), f.expurged, f.anomaly)).toList();
+                new Fact(f.context, f.snapshot, outcomes.get(mapIdentity(f.context)), f.expurged, f.anomaly, f.seconds, f.departureDate)).toList();
     }
 
     private static JourneyHistory.Counts counts(List<Fact> source, boolean perMap) {
@@ -174,7 +211,7 @@ public class JourneyHistoryService {
                 case UNAVAILABLE -> unavailable++;
             }
             if (f.context.map() != null) maps.add(mapIdentity(f.context));
-            if (f.expurged) expurged++;
+            if (Boolean.TRUE.equals(f.expurged)) expurged++;
             if (f.anomaly) anomalies++;
         }
         long evaluated = attained + failed;
@@ -207,5 +244,5 @@ public class JourneyHistoryService {
                 Objects.toString(c.employeeName(), ""), Objects.toString(c.employeeCode(), ""), Objects.toString(c.mapDriverCode(), "")));
     }
     private enum Outcome { ATTAINED, NOT_ATTAINED, PENDING, UNAVAILABLE }
-    private record Fact(OperationalContext context, LocalDateTime snapshot, Outcome outcome, boolean expurged, boolean anomaly) {}
+    private record Fact(OperationalContext context, LocalDateTime snapshot, Outcome outcome, Boolean expurged, boolean anomaly, Long seconds, LocalDate departureDate) {}
 }
