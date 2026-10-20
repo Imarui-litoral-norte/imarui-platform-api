@@ -1,6 +1,11 @@
 package com.logimarui.shared.authorization;
 
 public enum PermissionCode {
+    IDENTITY_USER_READ,
+    IDENTITY_USER_UPDATE,
+    AUTHENTICATION_SESSION_READ,
+    AUTHENTICATION_SESSION_REVOKE,
+    RECEIVABLES_READ,
 
     // AUTHENTICATION / USERS
     AUTHENTICATION_USER_READ,
