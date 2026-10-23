@@ -42,3 +42,22 @@ Provisionar IIAM local; proxy seguro; JWT UUID/JWKS; PDP/catálogo; clientes;
 retirada dos módulos legados; homologação do DEV. Só depois ler contas legadas
 e abrir solicitações idempotentes no IIAM. Não aprovar solicitações, atribuir
 classificação ou transferir senhas/hashes/grants automaticamente.
+
+## IIAMS-162: PostgreSQL local e artefato
+
+O script `scripts/initialize-iiam-dev.ps1` recebe uma conexão administrativa em
+arquivo privado e cria somente role/banco `iiam_dev`, sem poderes de administração.
+Recusa colisão com um banco/role existente e não redefine credenciais de aplicação
+em reexecução. Gera RSA 3072 PKCS8 e certificado TLS localhost/127.0.0.1 em PKCS12;
+mantém HTTPS, Secure e CSRF do IIAM. Senhas geradas são exclusivas deste ambiente.
+
+Em 23/10/2026, houve autorização explícita do usuário para recuperar somente a
+senha administrativa PostgreSQL local, preservando bancos. A configuração de
+autenticação foi restaurada byte a byte após uma conexão temporária restrita a
+postgres/postgres/127.0.0.1. O banco de aplicação usa credencial separada.
+
+Fontes IIAM copiadas para snapshot privado de build, sem modificar o checkout
+concorrente. O artefato compilado iniciou com Java 17, PostgreSQL 18 e TLS em
+127.0.0.1:4105; Flyway aplicou V1–V25 com sucesso e Hibernate validou o schema.
+Isso comprova o serviço standalone local; a integração completa Core/frontend e
+a importação de solicitações continuam pendentes.
