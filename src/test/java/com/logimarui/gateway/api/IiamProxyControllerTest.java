@@ -66,4 +66,22 @@ class IiamProxyControllerTest {
         String cookie = "IIAM_REFRESH=opaque; Path=/api/iam/authentication; Secure; HttpOnly";
         assertEquals(cookie, IiamProxyController.cookiePath(cookie));
     }
+
+    @Test
+    void documentationUsesPublicPrefixWithoutChangingAuthenticationJson() {
+        var charset = java.nio.charset.StandardCharsets.UTF_8;
+        byte[] auth = "{\"accessToken\":\"/v3/api-docs\"}".getBytes(charset);
+        assertArrayEquals(auth, IiamProxyController.documentationBody("/authentication/login", auth));
+        String html = new String(IiamProxyController.documentationBody("/docs",
+                "<script src=\"/swagger-ui/swagger-ui-bundle.js\"></script> url: '/v3/api-docs'".getBytes(charset)), charset);
+        assertTrue(html.contains("/api/iam/swagger-ui/swagger-ui-bundle.js"));
+        assertTrue(html.contains("'/api/iam/v3/api-docs'"));
+        String spec = new String(IiamProxyController.documentationBody("/v3/api-docs",
+                "{\"openapi\":\"3.0.1\",\"servers\":[{\"url\":\"https://localhost:4105\"}],\"paths\":{}}".getBytes(charset)),charset);
+        assertTrue(spec.contains("\"url\":\"/api/iam\""));
+        var upstream = java.net.URI.create("https://127.0.0.1:4105/docs");
+        assertEquals("/api/iam/swagger-ui/index.html?x=1",IiamProxyController.publicLocation("/swagger-ui/index.html?x=1",upstream));
+        assertEquals("/api/iam/docs",IiamProxyController.publicLocation("https://localhost:4105/docs",upstream));
+        assertEquals("https://external.example/docs",IiamProxyController.publicLocation("https://external.example/docs",upstream));
+    }
 }

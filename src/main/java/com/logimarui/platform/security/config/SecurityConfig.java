@@ -54,6 +54,13 @@ public class SecurityConfig {
                 .sessionManagement(sm ->
                         sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
+                .exceptionHandling(errors -> errors.authenticationEntryPoint((request,response,failure) -> {
+                    response.setStatus(401);
+                    response.setContentType("application/problem+json");
+                    response.setHeader("Cache-Control","no-store");
+                    response.setHeader("WWW-Authenticate","Bearer");
+                    response.getWriter().write("{\"type\":\"about:blank\",\"status\":401,\"code\":\"AUTHENTICATION_REQUIRED\"}");
+                }))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 "/",

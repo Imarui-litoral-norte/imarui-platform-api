@@ -48,7 +48,7 @@ class ReceivablesSecurityTest {
             context.register(TestConfig.class);
             context.refresh();
             var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
-            mvc.perform(get("/api/v1/receivables/titles")).andExpect(status().isForbidden());
+            mvc.perform(get("/api/v1/receivables/titles")).andExpect(status().isUnauthorized());
             mvc.perform(get("/api/v1/receivables/titles").with(user("without-permission")))
                     .andExpect(status().isForbidden());
             mvc.perform(get("/api/v1/receivables/titles").with(user("reader")

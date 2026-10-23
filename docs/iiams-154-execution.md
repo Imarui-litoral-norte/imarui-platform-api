@@ -125,3 +125,19 @@ aplicações são preservados. Login/refresh publicam contexto e logout limpa os
 prefixos; nenhum refresh, assinatura JWT ou domínio de autenticação é criado no Core.
 Este transporte suplementar é uma adaptação do gateway, sem alterar o protocolo V1
 ou o processo standalone do IIAM.
+
+## IIAMS-164: homologação HTTP real
+
+`scripts/verify-iiam-gateway.ps1` executado contra Core HTTPS e IIAM reais:
+22 cenários passaram, incluindo login/CSRF, refresh rotativo, logout, JWKS,
+contexto próprio/PDP, supervisor, leitura de Receivables e interface Crítica.
+SAVI aceitou o cookie restrito com PDP e recusou escrita sem Origin.
+Origin externo foi recusado. Documentação/OpenAPI permanecem sob `/api/iam`;
+somente payloads de documentação são adaptados, nunca JSON de autenticação.
+Erros sem sessão no Core usam 401 com WWW-Authenticate; ator sem permissão usa 403.
+Os testes de segurança foram ajustados para distinguir esses dois casos.
+
+Interrupção real do processo IIAM durante uma sessão sintética: supervisor
+respondeu 503 sem fallback. O DEV foi reiniciado pelo launcher local.
+Evidências JSON ficam no runtime privado. A confiança manual do certificado
+e a homologação visual do navegador continuam pendentes.

@@ -18,7 +18,7 @@ import java.util.*;
 public class IiamProxyController {
     private static final String PREFIX = "/api/iam";
     private static final Set<String> HOP = Set.of("connection", "keep-alive", "proxy-authenticate",
-            "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length");
+            "proxy-authorization", "te", "trailer", "transfer-encoding", "upgrade", "host", "content-length", "accept-encoding");
     private final ServiceRegistry registry;
     private final Environment configuration;
 
@@ -57,9 +57,13 @@ public class IiamProxyController {
                         HttpHeaders outgoing = new HttpHeaders();
                         response.getHeaders().forEach((name, values) -> {
                             if (!HOP.contains(name.toLowerCase(Locale.ROOT))) outgoing.put(name,
-                                    name.equalsIgnoreCase("Set-Cookie") ? values.stream().map(IiamProxyController::cookiePath).toList() : values);
+                                    name.equalsIgnoreCase("Set-Cookie") ? values.stream().map(IiamProxyController::cookiePath).toList()
+                                    : name.equalsIgnoreCase("Location") ? values.stream().map(value -> publicLocation(value, uri)).toList() : values);
                         });
-                        return new ResponseEntity<>(response.getBody().readAllBytes(), outgoing, response.getStatusCode());
+                        byte[] original = response.getBody().readAllBytes();
+                        byte[] body = documentationBody(uri.getPath(), original);
+                        if (!Arrays.equals(original, body)) { outgoing.remove(HttpHeaders.ETAG); outgoing.remove(HttpHeaders.CONTENT_ENCODING); }
+                        return new ResponseEntity<>(body, outgoing, response.getStatusCode());
                     });
         } catch (org.springframework.web.client.RestClientException failure) {
             return unavailable();
@@ -68,6 +72,48 @@ public class IiamProxyController {
 
     static String cookiePath(String cookie) {
         return cookie.replaceAll("(?i)(;\\s*Path=)(/)(?!api/iam(?:/|;|$))", "$1/api/iam/");
+    }
+
+    static String publicLocation(String value, URI upstream) {
+        URI location = upstream.resolve(value);
+        if (location.getHost() == null || location.getPort() != upstream.getPort()
+                || !List.of("localhost", "127.0.0.1", upstream.getHost()).contains(location.getHost())) return value;
+        String path = location.getRawPath();
+        return (path.equals(PREFIX) || path.startsWith(PREFIX + "/") ? path : PREFIX + path)
+                + (location.getRawQuery() == null ? "" : "?" + location.getRawQuery())
+                + (location.getRawFragment() == null ? "" : "#" + location.getRawFragment());
+    }
+
+    /** Only documentation payloads are adapted; authentication and domain JSON remain byte-for-byte. */
+    static byte[] documentationBody(String path, byte[] body) {
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        if (path.equals("/v3/api-docs")) {
+            try {
+                var node = mapper.readTree(body);
+                if (node instanceof tools.jackson.databind.node.ObjectNode object && object.has("openapi")) {
+                    object.set("servers", mapper.readTree("[{\"url\":\"/api/iam\"}]"));
+                    return mapper.writeValueAsBytes(object);
+                }
+            } catch (RuntimeException invalid) { return body; }
+        }
+        if (path.equals("/v3/api-docs/swagger-config")) {
+            try {
+                var node = mapper.readTree(body);
+                if (node instanceof tools.jackson.databind.node.ObjectNode object) {
+                    object.put("configUrl", PREFIX + "/v3/api-docs/swagger-config");
+                    object.put("url", PREFIX + "/v3/api-docs");
+                    object.put("oauth2RedirectUrl", PREFIX + "/swagger-ui/oauth2-redirect.html");
+                    return mapper.writeValueAsBytes(object);
+                }
+            } catch (RuntimeException invalid) { return body; }
+        }
+        if (path.equals("/docs") || path.equals("/docs/") || path.equals("/swagger-ui/index.html")
+                || path.equals("/swagger-ui/swagger-initializer.js")) {
+            return new String(body, java.nio.charset.StandardCharsets.UTF_8)
+                    .replaceAll("([\"'])(/(?:swagger-ui/|openapi-custom/|v3/api-docs))", "$1" + PREFIX + "$2")
+                    .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        }
+        return body;
     }
 
     private ResponseEntity<byte[]> unavailable() {
