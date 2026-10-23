@@ -6,6 +6,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpMethod;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.security.config.Customizer;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -17,6 +18,7 @@ import org.springframework.security.web.util.matcher.RequestMatcher;
 import java.util.List;
 
 @Configuration
+@EnableMethodSecurity
 @EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
     private static final List<String> NON_FRONTEND_PATH_PREFIXES = List.of(
@@ -86,32 +88,16 @@ public class SecurityConfig {
                                 "/openapi-custom/**",
                                 "/docs/**"
                         ).permitAll()
-                        .requestMatchers("/api/v1/admin/services/**").permitAll()
-                        .requestMatchers(
-                                "/api/extrator/**",
-                                "/api/backup/**",
-                                "/api/monitoring/**",
-                                "/api/n8n/**",
-                                "/api/evolution-api/**",
-                                "/rest",
-                                "/rest/**",
-                                "/webhook",
-                                "/webhook/**",
-                                "/webhook-test",
-                                "/webhook-test/**",
-                                "/form",
-                                "/form/**",
-                                "/form-test",
-                                "/form-test/**",
-                                "/gerenciador-database",
-                                "/gerenciador-database/**",
-                                "/evolution",
-                                "/evolution/**",
-                                "/evolution-api",
-                                "/evolution-api/**",
-                                "/n8n",
-                                "/n8n/**"
-                        ).permitAll()
+                        .requestMatchers("/api/v1/admin/services/**").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/critica-pedidos/api/mock").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/receivables/**").hasAuthority("logimarui-core.receivables.read")
+                        .requestMatchers("/api/v1/receivables/**").denyAll()
+                        .requestMatchers("/webhook", "/webhook/**", "/webhook-test", "/webhook-test/**",
+                                "/form", "/form/**", "/form-test", "/form-test/**").permitAll()
+                        .requestMatchers("/api/extrator/**", "/api/backup/**", "/api/monitoring/**", "/api/savi/**",
+                                "/api/n8n/**", "/api/evolution-api/**", "/rest", "/rest/**",
+                                "/gerenciador-database", "/gerenciador-database/**", "/evolution", "/evolution/**",
+                                "/evolution-api", "/evolution-api/**", "/n8n", "/n8n/**").authenticated()
                         .requestMatchers(frontendRequestMatcher()).permitAll()
 
                         .anyRequest().authenticated()

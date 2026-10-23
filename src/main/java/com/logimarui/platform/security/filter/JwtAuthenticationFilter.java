@@ -1,6 +1,8 @@
 package com.logimarui.platform.security.filter;
 
 import com.logimarui.platform.security.jwt.JwtTokenParser;
+import com.logimarui.platform.security.iiam.*;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.oauth2.jwt.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -21,6 +23,8 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenParser tokenParser;
+    private final IiamRequestPolicy requestPolicy;
+    private final IiamPdpClient pdp;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -35,9 +39,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             FilterChain filterChain
     ) throws ServletException, IOException {
 
+        var decision = requestPolicy.resolve(request);
         String header = request.getHeader("Authorization");
 
         if (header == null || !header.startsWith("Bearer ")) {
+            if (decision != null) {
+                problem(response, 401, "AUTHENTICATION_REQUIRED");
+                return;
+            }
             filterChain.doFilter(request, response);
             return;
         }
@@ -46,17 +55,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             var principal = tokenParser.parseAndValidate(token);
+            if (decision != null && !pdp.decide(token, principal, decision.permission(), decision.resourceType(), decision.resourceId())) {
+                problem(response, 403, "ACCESS_DENIED");
+                return;
+            }
 
             Authentication authentication =
                     new UsernamePasswordAuthenticationToken(
                             principal,
                             null,
-                            List.of()
+                            decision == null ? List.of() : List.of(new SimpleGrantedAuthority(decision.permission()))
                     );
 
             SecurityContextHolder.getContext()
                     .setAuthentication(authentication);
 
+        } catch (IiamPdpClient.Unavailable unavailable) {
+            SecurityContextHolder.clearContext();
+            problem(response, 503, "IIAM_AUTHORIZATION_UNAVAILABLE");
+            return;
         } catch (JwtException | IllegalArgumentException e) {
             SecurityContextHolder.clearContext();
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -64,5 +81,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    private void problem(HttpServletResponse response, int status, String code) throws IOException {
+        SecurityContextHolder.clearContext();
+        response.setStatus(status);
+        response.setContentType("application/problem+json");
+        response.setHeader("Cache-Control", "no-store");
+        if (status == 401) response.setHeader("WWW-Authenticate", "Bearer");
+        response.getWriter().write("{\"type\":\"about:blank\",\"status\":" + status + ",\"code\":\"" + code + "\"}");
     }
 }
