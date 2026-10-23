@@ -1,7 +1,0 @@
-package com.logimarui.authorization.core.domain.enums;
-
-public enum RoleStatus {
-    ACTIVE,
-    INACTIVE,
-    DELETED
-}

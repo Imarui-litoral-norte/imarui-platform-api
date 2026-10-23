@@ -23,7 +23,6 @@
         <java.version>17</java.version>
         <spring-cloud.version>2025.1.0</spring-cloud.version>
         <jjwt.version>0.12.5</jjwt.version>
-        <commons-codec.version>1.16.0</commons-codec.version>
     </properties>
 
     <dependencyManagement>
@@ -104,14 +103,7 @@
             <scope>runtime</scope>
         </dependency>
 
-        <!-- Utils -->
-        <dependency>
-            <groupId>commons-codec</groupId>
-            <artifactId>commons-codec</artifactId>
-            <version>${commons-codec.version}</version>
-        </dependency>
-
-        <!-- Development -->
+<!-- Development -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>

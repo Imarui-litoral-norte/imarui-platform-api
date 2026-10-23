@@ -1,10 +1,8 @@
 package com.logimarui.platform.security.config;
 
 import com.logimarui.platform.security.filter.JwtAuthenticationFilter;
-import com.logimarui.platform.security.jwt.JwtProperties;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpMethod;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.context.annotation.Bean;
@@ -19,7 +17,6 @@ import java.util.List;
 
 @Configuration
 @EnableMethodSecurity
-@EnableConfigurationProperties(JwtProperties.class)
 public class SecurityConfig {
     private static final List<String> NON_FRONTEND_PATH_PREFIXES = List.of(
             "/actuator",
@@ -69,18 +66,7 @@ public class SecurityConfig {
                                 "/webjars/**"
                         ).permitAll()
 
-                        .requestMatchers(
-                                "/api/iam/**",
-                                "/api/v1/authentication/login",
-                                "/api/v1/authentication/register",
-                                "/api/v1/authentication/refresh",
-                                "/api/v1/authentication/login/password-change",
-                                "/api/v1/authentication/password-recovery/requests",
-                                "/api/v1/authentication/password-recovery/requests/email-token",
-                                "/api/v1/authentication/password-recovery/requests/token/reset",
-
-                                "/error"
-                        ).permitAll()
+                        .requestMatchers("/api/iam/**", "/error").permitAll()
                         .requestMatchers(
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
