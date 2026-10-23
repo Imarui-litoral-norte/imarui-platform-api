@@ -114,14 +114,40 @@ public class JavaServiceProcessRunner implements ServiceProcessRunner {
     public void stop(ManagedService service, ServiceRuntime runtime) {
         // JVM is the root process; do not terminate an unrelated listener or the PostgreSQL service.
         ProcessHandle.of(runtime.getRootPid()).ifPresent(handle -> {
-            String executable = handle.info().command().orElse("");
-            String[] args = handle.info().arguments().orElse(new String[0]);
+            var info = handle.info();
+            String executable = info.command().orElse("");
+            String[] args = info.arguments().orElse(new String[0]);
+            Instant created=info.startInstant().orElse(null);
             Path expectedArtifact = Path.of(service.getWorkingDirectory()).toAbsolutePath().resolve(
                     configuration.getProperty("SERVICE_IIAM_JAR", "target/imarui-iam-service-0.0.1-SNAPSHOT.jar")).normalize();
+            boolean artifactMatches=Arrays.stream(args).anyMatch(arg -> arg.equals(expectedArtifact.toString()));
+            if(!artifactMatches && System.getProperty("os.name","").startsWith("Windows")){
+                try {
+                    var snapshot=WindowsJavaProcessIdentity.read(handle.pid());
+                    if(snapshot==null && !handle.isAlive())return;
+                    if(snapshot!=null){
+                        executable=snapshot.executable();created=snapshot.created();
+                        artifactMatches=WindowsJavaProcessIdentity.invokesArtifact(snapshot.commandLine(),expectedArtifact);
+                    }
+                } catch(InterruptedException interrupted){Thread.currentThread().interrupt();throw new IllegalStateException("Process identity lookup interrupted");}
+                catch(IOException unavailable){throw new IllegalStateException("Process identity could not be verified");}
+            }
             if (!Path.of(executable.isBlank() ? "unknown" : executable).getFileName().toString().equalsIgnoreCase("java.exe")
-                    || Arrays.stream(args).noneMatch(arg -> arg.equals(expectedArtifact.toString())))
+                    || !artifactMatches || !startedBeforeRuntime(created, runtime.getStartedAt()))
                 throw new IllegalStateException("Refusing to terminate a process without IIAM JVM ownership");
-            terminator.terminate(handle.pid());
+            if (handle.isAlive()) {
+                if (!handle.destroy()) throw new IllegalStateException("Unable to stop the owned IIAM JVM");
+                handle.onExit().completeOnTimeout(null, 5, java.util.concurrent.TimeUnit.SECONDS).join();
+                if (handle.isAlive()) {
+                    if (!handle.destroyForcibly()) throw new IllegalStateException("Unable to terminate the owned IIAM JVM");
+                    handle.onExit().completeOnTimeout(null, 3, java.util.concurrent.TimeUnit.SECONDS).join();
+                    if (handle.isAlive()) throw new IllegalStateException("Owned IIAM JVM did not exit");
+                }
+            }
         });
+    }
+
+    static boolean startedBeforeRuntime(Instant created, Instant registered) {
+        return created != null && registered != null && !created.isAfter(registered);
     }
 }

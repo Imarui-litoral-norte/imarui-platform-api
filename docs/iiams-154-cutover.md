@@ -32,9 +32,17 @@ Recuperação local se o IIAM ficar indisponível:
 
 Com IIAM indisponível, APIs protegidas recusam acesso; a recuperação local não
 depende de uma autorização HTTP do serviço que está parado. O launcher confere
-o processo Core e os listeners registrados antes de parar os processos DEV.
+o processo Core, os listeners e a data de criação dos processos contra o registro
+do runtime antes de parar o DEV. PIDs reutilizados ou sem data verificável são recusados.
 PostgreSQL continua ativo. No reconcile, o IIAM passa pelo runner Java, que
 confere o executável e o artefato antes de encerrar um PID persistido.
+No Windows, o runner consulta a linha de comando pelo CIM, porque o Java 17
+não disponibiliza os argumentos de filhos em `ProcessHandle.Info`. Se o stop
+for recusado, o runtime IIAM permanece registrado. O stop aguarda a saída do
+ProcessHandle verificado, antes de permitir a nova instância.
+
+Restart real pela API do supervisor, preservando a sessão atual e a porta:
+`python scripts/verify-iiam-restart.py --restart` (somente DEV localhost:8443).
 
 ## Operadores
 
@@ -86,15 +94,18 @@ são reportados, nunca inventados.
 
 | Cenário | Resultado |
 | --- | --- |
-| Core `mvn test` com IIAM real | 102 testes; zero falhas/erros; 3 skips READ_DB |
+| Core `mvn test` com IIAM real | 110 testes; zero falhas/erros; 3 skips READ_DB |
+| Launcher: ownership de PIDs | 5 verificações de metadados válidos/reutilizados/ausentes, sem encerrar processos no teste |
 | Frontend npm test / typecheck / lint focado / build webpack | passaram |
 | HTTPS real pelo gateway | 22 cenários passaram |
 | Receivables, SAVI e Crítica via gateway | responderam com sucesso |
 | ALLOW / DENY / revogação / catálogo idempotente | testes reais IIAM passaram |
 | IIAM interrompido | supervisor respondeu 503 sem fallback |
+| Restart IIAM pela API do supervisor | processo substituído, mesma porta, sessão autenticada preservada |
 | Rotação JWKS e tokens inválidos | testes de contrato passaram |
 | JWKS indisponível com cache vazio | 503 sem aceitar token; assinatura/kid inválidos com JWKS disponível continuam 401 |
 | Fonte MySQL preservada / reexecução do importador | 8 contas na fonte; 8 solicitações pendentes, sem duplicação |
+| Operador administrativo / contexto próprio / revisão | acesso autorizado pela API às 8 solicitações PENDING; sem aprovação |
 | Formulários públicos no frontend interno | login e solicitação renderizaram; sem envio de formulário |
 | Login HTTPS / refresh real em várias abas | pendente da confiança manual do certificado |
 | Serviços desabilitados e fluxos SMTP | sem homologação operacional nesta máquina |

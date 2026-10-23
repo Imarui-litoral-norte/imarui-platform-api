@@ -4,6 +4,7 @@ $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $core=Join-Path $workspace 'logimarui-core-api'
 $private=[IO.Path]::GetFullPath($RuntimeDirectory)
 $javaHome='C:\Users\lucas.l\.jdks\ms-17.0.18'
+. (Join-Path $PSScriptRoot 'managed-runtime-ownership.ps1')
 if($Action -in @('stop','restart')){
     $corePidFile=Join-Path $private 'core-integrated.pid'
     if(!(Test-Path -LiteralPath $corePidFile)){throw 'No integrated Core ownership record'}
@@ -13,6 +14,9 @@ if($Action -in @('stop','restart')){
     # Child ownership comes from the supervisor files AND the current listener.
     $records=@(Get-ChildItem -LiteralPath (Join-Path $core '.runtime/pids') -Filter '*.pid' | ForEach-Object {Get-Content -LiteralPath $_.FullName -Raw|ConvertFrom-Json})
     foreach($record in $records){
+        foreach($ownedProcessId in @($record.rootPid,$record.listenerPid)|Select-Object -Unique){
+            Assert-ManagedRuntimeProcessTime $record (Get-CimInstance Win32_Process -Filter ('ProcessId='+$ownedProcessId))
+        }
         $listener=Get-NetTCPConnection -State Listen -LocalPort $record.port -ErrorAction SilentlyContinue
         if($listener -and $listener.OwningProcess -notcontains $record.listenerPid){throw ('Service listener ownership mismatch: '+$record.serviceId)}
         if($record.serviceId -eq 'iiam'){
@@ -22,6 +26,7 @@ if($Action -in @('stop','restart')){
     }
     foreach($record in $records){
         foreach($ownedProcessId in @($record.listenerPid,$record.rootPid)|Select-Object -Unique){
+            Assert-ManagedRuntimeProcessTime $record (Get-CimInstance Win32_Process -Filter ('ProcessId='+$ownedProcessId))
             if(Get-Process -Id $ownedProcessId -ErrorAction SilentlyContinue){Stop-Process -Id $ownedProcessId}
         }
     }

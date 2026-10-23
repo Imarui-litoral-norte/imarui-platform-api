@@ -10,6 +10,28 @@ import static org.junit.jupiter.api.Assertions.*;
 class JavaServiceProcessRunnerTest {
     @TempDir Path directory;
 
+    @Test void windowsCommandLineMustContainTheExactJarArgument() {
+        Path artifact=directory.resolve("directory with spaces/iiam.jar").toAbsolutePath();
+        assertTrue(WindowsJavaProcessIdentity.invokesArtifact("java.exe -jar \""+artifact+"\"",artifact));
+        assertFalse(WindowsJavaProcessIdentity.invokesArtifact("java.exe -jar \""+artifact+".other\"",artifact));
+        assertFalse(WindowsJavaProcessIdentity.invokesArtifact("java.exe -Dartifact=\""+artifact+"\" -jar unrelated.jar",artifact));
+    }
+
+    @Test @org.junit.jupiter.api.condition.EnabledOnOs(org.junit.jupiter.api.condition.OS.WINDOWS)
+    void windowsCimCanIdentifyTheCurrentJvmWithoutUsingItsEnvironment() throws Exception {
+        var snapshot=WindowsJavaProcessIdentity.read(ProcessHandle.current().pid());
+        assertNotNull(snapshot);assertTrue(snapshot.executable().endsWith("java.exe"));
+        assertNotNull(snapshot.created());assertFalse(snapshot.commandLine().isBlank());
+    }
+
+    @Test void reusedOrUnknownProcessTimestampCannotOwnAnEarlierRuntime() {
+        var registered=java.time.Instant.parse("2026-10-23T10:00:03Z");
+        assertTrue(JavaServiceProcessRunner.startedBeforeRuntime(registered.minusSeconds(3),registered));
+        assertFalse(JavaServiceProcessRunner.startedBeforeRuntime(registered.plusSeconds(1),registered));
+        assertFalse(JavaServiceProcessRunner.startedBeforeRuntime(null,registered));
+        assertFalse(JavaServiceProcessRunner.startedBeforeRuntime(registered,null));
+    }
+
     @Test
     void doesNotInheritCoreSecretsOrJvmInjectionOptions() throws Exception {
         Path key = Files.writeString(directory.resolve("key.pem"), "test-key-placeholder");

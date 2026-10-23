@@ -58,9 +58,11 @@ public class ServiceLifecycleManager {
 
         try {
             runner.stop(service, runtime);
-        } finally {
-            deleteRuntimeByAnyAlias(canonicalServiceId);
+        } catch (RuntimeException | Error failure) {
+            if (!ManagedServiceIds.IIAM.equals(canonicalServiceId)) deleteRuntimeByAnyAlias(canonicalServiceId);
+            throw failure;
         }
+        deleteRuntimeByAnyAlias(canonicalServiceId);
     }
 
     public ServiceRuntime restartById(String serviceId) {
@@ -98,7 +100,8 @@ public class ServiceLifecycleManager {
                 log.info("[Supervisor] Servico {} parado.", runtime.getServiceId());
             } catch (Exception exception) {
                 log.error("[Supervisor] Erro ao parar servico {}.", runtime.getServiceId(), exception);
-                serviceRuntimeRepository.deleteByServiceId(runtime.getServiceId());
+                if (!ManagedServiceIds.IIAM.equals(runtime.getServiceId()))
+                    serviceRuntimeRepository.deleteByServiceId(runtime.getServiceId());
             }
         }
     }
