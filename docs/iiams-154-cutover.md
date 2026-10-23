@@ -96,6 +96,7 @@ são reportados, nunca inventados.
 | --- | --- |
 | Core `mvn test` com IIAM real | 110 testes; zero falhas/erros; 3 skips READ_DB |
 | Launcher: ownership de PIDs | 5 verificações de metadados válidos/reutilizados/ausentes, sem encerrar processos no teste |
+| Falhas de runtime Java | porta ocupada detectada; JVM inválida e PostgreSQL indisponível encerraram sem prontidão; chave ausente recusada antes de iniciar processo |
 | Frontend npm test / typecheck / lint focado / build webpack | passaram |
 | HTTPS real pelo gateway | 22 cenários passaram |
 | Receivables, SAVI e Crítica via gateway | responderam com sucesso |
