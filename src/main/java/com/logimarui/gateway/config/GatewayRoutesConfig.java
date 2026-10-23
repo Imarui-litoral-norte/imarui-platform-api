@@ -508,6 +508,10 @@ public class GatewayRoutesConfig {
             ServerRequest request,
             ServiceRegistry serviceRegistry
     ) {
+        if (matchesPath(request.path(), "/api/iam")) {
+            return false; // Explicit IIAM protocol controller owns these requests.
+        }
+
         if (matchesPath(request.path(), CORE_API_PREFIX)) {
             return false;
         }
