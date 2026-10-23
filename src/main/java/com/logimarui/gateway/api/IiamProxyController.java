@@ -13,6 +13,7 @@ import java.util.*;
 
 /** Protocol proxy: never rewrite IIAM JSON or authorize in place of the upstream. */
 @RestController
+@RequestMapping("/api/iam")
 @RequiredArgsConstructor
 public class IiamProxyController {
     private static final String PREFIX = "/api/iam";
@@ -21,7 +22,7 @@ public class IiamProxyController {
     private final ServiceRegistry registry;
     private final Environment configuration;
 
-    @RequestMapping({"/api/iam", "/api/iam/**"})
+    @RequestMapping({"", "/**"})
     public ResponseEntity<byte[]> proxy(HttpServletRequest request) throws IOException {
         var route = registry.findAll().stream().filter(r -> "iiam".equals(r.getId())).findFirst();
         if (route.isEmpty()) return unavailable();

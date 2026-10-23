@@ -36,7 +36,7 @@ tarefas seguintes. Falha ou timeout encerra apenas o processo lançado.
 Stop verifica que o PID ainda pertence à JVM IIAM antes de encerrá-lo.
 O PostgreSQL nativo é externo ao lifecycle e não é encerrado pelo supervisor.
 
-## Sequência pendente
+## Sequência inicial
 
 Provisionar IIAM local; proxy seguro; JWT UUID/JWKS; PDP/catálogo; clientes;
 retirada dos módulos legados; homologação do DEV. Só depois ler contas legadas
@@ -61,3 +61,44 @@ concorrente. O artefato compilado iniciou com Java 17, PostgreSQL 18 e TLS em
 127.0.0.1:4105; Flyway aplicou V1–V25 com sucesso e Hibernate validou o schema.
 Isso comprova o serviço standalone local; a integração completa Core/frontend e
 a importação de solicitações continuam pendentes.
+
+## IIAMS-167/168: catálogo e decisões reais
+
+`CorePermissionCatalog` declara namespace próprio `logimarui-core`, sem aliases no
+catálogo interno do IIAM. `IiamPdpClient` assina prova técnica RS256 independente do
+ator, vinculada ao método, caminho, SHA256 do corpo, correlação e nonce de uso único.
+O filtro resolve recursos por rotas e registro local, sem usar Tenant/Scope de headers.
+O supervisor exige permissões de leitura/gestão; módulos e serviços protegidos usam
+PDP vivo. Negação interrompe o controlador; indisponibilidade responde 503.
+
+O setup `configure-iiam-dev-client.ps1` usa APIs administrativas V1 e mantém estado
+privado para retomada. O operador ROOT de governança não recebe autoatribuição:
+uma identidade SERVICE sintética distinta recebe o papel de uso do Core, respeitando
+a proteção contra autoelevação. Nenhuma conta legada foi aprovada ou classificada.
+Bindings são imutáveis no IIAM; retomada de uma operação cuja resposta se perdeu
+exige inspeção do binding, sem recriá-lo ou trocar seu Scope silenciosamente.
+
+O teste opt-in `IiamLiveContractTest`, habilitado somente por
+`IIAM_LIVE_TEST_RUNTIME`, usa o certificado local confiável e identidades sintéticas.
+Comprova catálogo idempotente, ALLOW real, DENY imediato com revogação de limpeza,
+recusa de binding desconhecido e rejeição de sessão pelo PDP após logout, enquanto
+a validação criptográfica offline continua válida até a expiração do access.
+
+## IIAMS-169/170: remoção e regressão
+
+Retirados authentication, authorization, iam, catálogo compartilhado legado,
+bootstrap de administrador/sincronização local e principal numérico. Os 229 arquivos
+de código/teste anteriores estão preservados no arquivo local
+`../.runtime/iiams-154-baseline/removed-legacy`, com manifesto SHA256 verificado.
+As tabelas de autenticação antigas não foram apagadas nem migradas.
+JPA do Core passa a validar o schema por padrão; alterações exigem configuração
+explícita, preservando o banco que continua atendendo aos módulos de negócio.
+
+`clean test` de 23/10/2026: 93 testes, zero falhas/erros, três ignorados por ausência
+de configuração READ_DB. Inclui teste real IIAM/PDP e verificação das fronteiras e
+pacotes retidos. O contrato REST passou a examinar somente classes de produção,
+excluindo fixtures de teste, e reconhece exclusivamente o proxy `/api/iam` como
+transporte externo fora das raízes REST versionadas do Core.
+
+Ainda faltam homologação completa do proxy HTTPS/cookies, clientes frontend,
+execução integrada do projeto DEV e abertura das solicitações de contas antigas.

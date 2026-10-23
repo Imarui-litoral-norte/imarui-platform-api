@@ -63,4 +63,3 @@ public class ReceivablesController {
                 filters.query(service.today()), paymentPage, paymentSize));
     }
 }
-
