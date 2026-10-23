@@ -86,20 +86,23 @@ são reportados, nunca inventados.
 
 | Cenário | Resultado |
 | --- | --- |
-| Core `mvn test` com IIAM real | 101 testes; zero falhas/erros; 3 skips READ_DB |
+| Core `mvn test` com IIAM real | 102 testes; zero falhas/erros; 3 skips READ_DB |
 | Frontend npm test / typecheck / lint focado / build webpack | passaram |
 | HTTPS real pelo gateway | 22 cenários passaram |
 | Receivables, SAVI e Crítica via gateway | responderam com sucesso |
 | ALLOW / DENY / revogação / catálogo idempotente | testes reais IIAM passaram |
 | IIAM interrompido | supervisor respondeu 503 sem fallback |
 | Rotação JWKS e tokens inválidos | testes de contrato passaram |
+| JWKS indisponível com cache vazio | 503 sem aceitar token; assinatura/kid inválidos com JWKS disponível continuam 401 |
 | Fonte MySQL preservada / reexecução do importador | 8 contas na fonte; 8 solicitações pendentes, sem duplicação |
-| Navegador / refresh real em várias abas | pendente da confiança manual do certificado |
+| Formulários públicos no frontend interno | login e solicitação renderizaram; sem envio de formulário |
+| Login HTTPS / refresh real em várias abas | pendente da confiança manual do certificado |
 | Serviços desabilitados e fluxos SMTP | sem homologação operacional nesta máquina |
 
 Fonte IIAM fixada em `4a299044b767d11a0c7be0db33298043b570b9dd`, checkout
 concorrente sem alterações no momento da conferência. Artefato isolado no snapshot
 privado `build-v1`; o checkout do outro agente não foi modificado.
+SHA256 do artefato IIAM: `8BFC6F2F8525DE0B011D3909CE48C533FFFCD715086C009403CBBC9FD8B4CFB3`.
 
 ## Rollback
 

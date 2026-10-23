@@ -83,6 +83,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             SecurityContextHolder.clearContext();
             problem(response, 503, "IIAM_AUTHORIZATION_UNAVAILABLE");
             return;
+        } catch (com.logimarui.platform.security.jwt.IiamJwtDecoder.KeysUnavailable unavailable) {
+            problem(response,503,"IIAM_KEYS_UNAVAILABLE");
+            return;
         } catch (JwtException | IllegalArgumentException e) {
             SecurityContextHolder.clearContext();
             problem(response,401,"INVALID_ACCESS_TOKEN");

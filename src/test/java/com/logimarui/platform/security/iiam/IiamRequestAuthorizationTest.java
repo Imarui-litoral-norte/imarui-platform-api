@@ -61,6 +61,13 @@ class IiamRequestAuthorizationTest {
         assertEquals(503,response.getStatus());assertFalse(called.get());
         assertFalse(response.getContentAsString().contains("signed-access"));
     }
+    @Test void unavailableSigningKeysReturn503BeforePdpOrController() throws Exception {
+        when(tokens.parseAndValidate("signed-access")).thenThrow(new com.logimarui.platform.security.jwt.IiamJwtDecoder.KeysUnavailable());
+        var called=new AtomicBoolean();
+        var response=perform("GET","/api/v1/admin/services/overview",true,called);
+        assertEquals(503,response.getStatus());assertFalse(called.get());verifyNoInteractions(pdp);
+        assertTrue(response.getContentAsString().contains("IIAM_KEYS_UNAVAILABLE"));
+    }
     @Test void receivablesUseOwnedPermissionAndUnsupportedWritesNeverGainRead() throws Exception {
         when(pdp.decide("signed-access",actor,CorePermissionCatalog.RECEIVABLES_READ,"CORE_MODULE","receivables")).thenReturn(true);
         var read=new AtomicBoolean();assertEquals(200,perform("GET","/api/v1/receivables/titles",true,read).getStatus());assertTrue(read.get());

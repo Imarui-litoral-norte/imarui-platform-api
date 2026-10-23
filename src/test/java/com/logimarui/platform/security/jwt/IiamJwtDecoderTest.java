@@ -72,8 +72,8 @@ class IiamJwtDecoderTest {
     }
 
     @Test void invalidSignatureAndUnknownKidFailClosed() {
-        assertThrows(JwtException.class, () -> decoder.decode(sign(valid("first"), second)));
-        assertThrows(JwtException.class, () -> decoder.decode(sign(valid("unknown"), first)));
+        assertFalse(assertThrows(JwtException.class, () -> decoder.decode(sign(valid("first"), second))) instanceof IiamJwtDecoder.KeysUnavailable);
+        assertFalse(assertThrows(JwtException.class, () -> decoder.decode(sign(valid("unknown"), first))) instanceof IiamJwtDecoder.KeysUnavailable);
     }
 
     @Test void issuerAudienceTypeAndLegacyNumericIdentityAreRejected() {
@@ -94,6 +94,6 @@ class IiamJwtDecoderTest {
 
     @Test void unavailableJwksDoesNotAcceptAnUnverifiedToken() {
         server.stop(0);
-        assertThrows(JwtException.class, () -> decoder.decode(sign(valid("first"), first)));
+        assertThrows(IiamJwtDecoder.KeysUnavailable.class, () -> decoder.decode(sign(valid("first"), first)));
     }
 }

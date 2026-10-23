@@ -17,7 +17,20 @@ public class IiamJwtDecoder implements JwtDecoder {
     private final Environment configuration;
     private String endpoint;
     private JwtDecoder consumer;
-    @Override public Jwt decode(String encoded) throws JwtException { return consumer().decode(encoded); }
+    public static final class KeysUnavailable extends JwtException {
+        public KeysUnavailable() { super("IIAM signing keys are unavailable"); }
+    }
+    @Override public Jwt decode(String encoded) throws JwtException {
+        try { return consumer().decode(encoded); }
+        catch (JwtException invalid) {
+            // Invalid signature/claims stay 401. Transport, TLS and HTTP errors fetching keys are 503.
+            for (Throwable cause=invalid; cause!=null; cause=cause.getCause()) {
+                if (cause instanceof java.io.IOException || cause instanceof org.springframework.web.client.RestClientException
+                        || cause instanceof com.nimbusds.jose.RemoteKeySourceException) throw new KeysUnavailable();
+            }
+            throw invalid;
+        }
+    }
     private synchronized JwtDecoder consumer() {
         String scheme = configuration.getProperty("SERVICE_IIAM_UPSTREAM_SCHEME", "https");
         String url = services.findAll().stream().filter(route -> route.getId().equals("iiam")).findFirst()
