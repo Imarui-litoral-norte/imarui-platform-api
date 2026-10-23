@@ -1,11 +1,7 @@
 package com.logimarui.platform.security.filter;
 
-import com.logimarui.authentication.core.application.services.AccessTokenAuthenticationService;
-import com.logimarui.platform.security.authorization.UserAuthoritiesProvider;
-import com.logimarui.platform.security.jwt.JwtAuthenticatedUser;
 import com.logimarui.platform.security.jwt.JwtTokenParser;
-import com.logimarui.platform.security.principal.UserPrincipal;
-import io.jsonwebtoken.JwtException;
+import org.springframework.security.oauth2.jwt.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -13,7 +9,6 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -26,8 +21,6 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenParser tokenParser;
-    private final UserAuthoritiesProvider userAuthoritiesProvider;
-    private final AccessTokenAuthenticationService accessTokenAuthenticationService;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -52,32 +45,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String token = header.substring(7);
 
         try {
-            JwtAuthenticatedUser jwtUser = tokenParser.parseAndValidate(token);
-
-            accessTokenAuthenticationService.validate(
-                    jwtUser.userId(),
-                    jwtUser.sessionId()
-            );
-
-            List<SimpleGrantedAuthority> authorities =
-                    userAuthoritiesProvider.findAuthorityCodesByUserId(jwtUser.userId())
-                            .stream()
-                            .distinct()
-                            .map(SimpleGrantedAuthority::new)
-                            .toList();
-
-            UserPrincipal principal =
-                    new UserPrincipal(
-                            jwtUser.userId(),
-                            jwtUser.sessionId(),
-                            jwtUser.expiresAt()
-                    );
+            var principal = tokenParser.parseAndValidate(token);
 
             Authentication authentication =
                     new UsernamePasswordAuthenticationToken(
                             principal,
                             null,
-                            authorities
+                            List.of()
                     );
 
             SecurityContextHolder.getContext()
