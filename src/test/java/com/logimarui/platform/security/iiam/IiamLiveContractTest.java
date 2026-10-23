@@ -55,6 +55,7 @@ class IiamLiveContractTest {
             var parser = new JwtTokenParser(new IiamJwtDecoder(services, environment));
             var principal = parser.parseAndValidate(token);
             var pdp = new IiamPdpClient(services, environment, json);
+            assertEquals(principal.identityId().toString(),pdp.currentIdentity(token,principal).path("id").asText());
             assertFalse(pdp.synchronizeCatalog(), "The already provisioned canonical catalog must be unchanged");
             assertTrue(pdp.decide(token, principal, CorePermissionCatalog.SERVICES_READ, "GATEWAY_SERVER", "local"));
             Properties governor = new Properties();

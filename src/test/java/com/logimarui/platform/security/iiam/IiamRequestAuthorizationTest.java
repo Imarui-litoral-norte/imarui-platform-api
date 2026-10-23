@@ -23,7 +23,7 @@ class IiamRequestAuthorizationTest {
         SecurityContextHolder.clearContext();
         when(services.findAll()).thenReturn(List.of());
         when(tokens.parseAndValidate("signed-access")).thenReturn(actor);
-        filter=new JwtAuthenticationFilter(tokens,new IiamRequestPolicy(services),pdp);
+        filter=new JwtAuthenticationFilter(tokens,new IiamRequestPolicy(services),pdp,new IiamBrowserAccess(new org.springframework.mock.env.MockEnvironment()));
     }
     @AfterEach void cleanup() { SecurityContextHolder.clearContext(); }
     private MockHttpServletResponse perform(String method,String path,boolean bearer,AtomicBoolean called) throws Exception {

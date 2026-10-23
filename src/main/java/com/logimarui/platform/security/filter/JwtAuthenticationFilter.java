@@ -25,6 +25,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final JwtTokenParser tokenParser;
     private final IiamRequestPolicy requestPolicy;
     private final IiamPdpClient pdp;
+    private final IiamBrowserAccess browser;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -41,6 +42,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         var decision = requestPolicy.resolve(request);
         String header = request.getHeader("Authorization");
+        try {
+            if (header == null) {
+                String cookie = browser.token(request, decision);
+                if (cookie != null) header = "Bearer " + cookie;
+            }
+        } catch (IiamBrowserAccess.Rejected rejected) {
+            problem(response,403,"ORIGIN_REQUIRED");return;
+        }
 
         if (header == null || !header.startsWith("Bearer ")) {
             if (decision != null) {
@@ -76,7 +85,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return;
         } catch (JwtException | IllegalArgumentException e) {
             SecurityContextHolder.clearContext();
-            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            problem(response,401,"INVALID_ACCESS_TOKEN");
             return;
         }
 

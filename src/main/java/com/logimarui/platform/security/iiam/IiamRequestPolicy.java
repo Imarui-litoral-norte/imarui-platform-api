@@ -24,6 +24,7 @@ public class IiamRequestPolicy {
     public Decision resolve(HttpServletRequest request) {
         String path = request.getRequestURI(), method = request.getMethod();
         if (method.equals("OPTIONS") || matches(path,"/api/iam")) return null;
+        if (path.equals("/api/v1/gateway/me") || path.equals("/api/v1/gateway/browser-context")) return null;
         // Existing standalone upload and n8n inbound callbacks have deliberately independent contracts.
         if (method.equals("PUT") && path.equals("/critica-pedidos/api/mock")) return null;
         for (String callback : List.of("/webhook", "/webhook-test", "/form", "/form-test")) if (matches(path,callback)) return null;

@@ -729,6 +729,13 @@ public class GatewayRoutesConfig {
 
     private void copyRequestHeaders(HttpHeaders source, HttpHeaders target) {
         source.forEach((name, values) -> {
+            if ("cookie".equalsIgnoreCase(name)) {
+                List<String> filtered = values.stream().map(value -> java.util.Arrays.stream(value.split(";"))
+                        .map(String::trim).filter(cookie -> !cookie.startsWith("LG_SERVICE_ACCESS="))
+                        .collect(java.util.stream.Collectors.joining("; "))).filter(value -> !value.isBlank()).toList();
+                if (!filtered.isEmpty()) target.put(name, filtered);
+                return;
+            }
             if (!isHopByHopHeader(name)) {
                 target.put(name, values);
             }

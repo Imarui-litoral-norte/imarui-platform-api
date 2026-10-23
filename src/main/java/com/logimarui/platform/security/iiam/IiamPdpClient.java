@@ -28,6 +28,25 @@ public class IiamPdpClient {
     public static final class Unavailable extends RuntimeException {
         public Unavailable() { super("IIAM authorization is unavailable"); }
     }
+    public static final class ActorInvalid extends RuntimeException {}
+
+    public tools.jackson.databind.JsonNode currentIdentity(String actorToken, IiamPrincipal actor) {
+        try {
+            var transport = new org.springframework.http.client.JdkClientHttpRequestFactory(HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(3)).followRedirects(HttpClient.Redirect.NEVER).build());
+            transport.setReadTimeout(Duration.ofSeconds(7));
+            return RestClient.builder().requestFactory(transport).build().get()
+                    .uri(baseUri() + "/api/v1/identities/" + actor.identityId())
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + actorToken).exchange((sent,response) -> {
+                        if (response.getStatusCode().value() == 401) throw new ActorInvalid();
+                        if (response.getStatusCode().value() != 200) throw new Unavailable();
+                        var identity = json.readTree(response.getBody());
+                        if (!actor.identityId().toString().equals(identity.path("id").asText())) throw new Unavailable();
+                        return identity;
+                    });
+        } catch (ActorInvalid invalid) { throw invalid; }
+        catch (Exception failure) { throw new Unavailable(); }
+    }
 
     public boolean decide(String actorToken, IiamPrincipal actor, String permission, String resourceType, String resourceId) {
         if (actor == null || actorToken == null || actorToken.isBlank() || !CorePermissionCatalog.owns(permission)) return false;

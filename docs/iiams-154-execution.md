@@ -102,3 +102,26 @@ transporte externo fora das raízes REST versionadas do Core.
 
 Ainda faltam homologação completa do proxy HTTPS/cookies, clientes frontend,
 execução integrada do projeto DEV e abertura das solicitações de contas antigas.
+
+## IIAMS-173: contexto próprio e navegação de aplicações web
+
+`GET /api/v1/gateway/me` consulta a Identity própria no IIAM e monta somente
+capacidades de interface a partir de PDP para recursos fixos. Não cria User, Role,
+grants ou sessão persistida no Core. Introspecção administrativa do IIAM permanece
+restrita ao respectivo permissionamento; usuários comuns não ganham AUDIT_READ.
+
+O cliente JavaScript mantém access somente em memória e o refresh somente no cookie
+HttpOnly do IIAM. Para navegações/iframes de aplicações publicadas, que não carregam
+o Bearer da memória JS, há transporte suplementar do mesmo access IIAM em
+`LG_SERVICE_ACCESS`: Secure, HttpOnly, SameSite Strict, host-only e limitado aos
+prefixos explícitos de serviços. Nunca utiliza Path raiz nem estende o vencimento
+original do access (máximo 900 segundos). O cookie não autentica APIs locais do Core
+ou operações do supervisor; estas continuam exigindo Bearer.
+
+Cada uso do cookie continua validando assinatura e PDP vivo. Escritas com cookie
+exigem Origin exatamente igual a `CORE_PUBLIC_ORIGIN`. Tokens de navegação são
+removidos dos headers enviados aos serviços publicados; cookies próprios dessas
+aplicações são preservados. Login/refresh publicam contexto e logout limpa os
+prefixos; nenhum refresh, assinatura JWT ou domínio de autenticação é criado no Core.
+Este transporte suplementar é uma adaptação do gateway, sem alterar o protocolo V1
+ou o processo standalone do IIAM.
