@@ -151,6 +151,12 @@ public class ServiceStartupReconciler {
 
         ServiceRuntime persistedRuntime = runtime.get();
 
+        if (ManagedServiceIds.IIAM.equals(service.getId())) {
+            // The Java runner verifies executable and artifact ownership before terminating a PID.
+            serviceLifecycleManager.stopById(service.getId());
+            return;
+        }
+
         log.info(
                 "[Supervisor] Matando runtime persistido {} rootPid={} listenerPid={}",
                 service.getId(),
