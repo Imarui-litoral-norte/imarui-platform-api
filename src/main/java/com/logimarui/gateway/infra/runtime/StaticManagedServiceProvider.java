@@ -51,6 +51,7 @@ public class StaticManagedServiceProvider implements ManagedServiceProvider {
         Path frontendRoot = workspaceRoot.resolve("logImarui-frontend").normalize();
 
         this.services = List.of(
+                new ServiceDefinition("SERVICE_IIAM", ManagedServiceIds.IIAM, "/api/iam", ServiceType.JAVA, servicesRoot.resolve("imarui-identity-and-access-manager-service"), "java -jar", null, 4105, 4005, false, "SERVER_PORT", false, false),
                 new ServiceDefinition("SERVICE_EXTRATOR", ManagedServiceIds.EXTRACTION, "/api/extrator", ServiceType.PYTHON, servicesRoot.resolve("extrator-manager"), "python app.py", null, 4100, 4000, true, "PORT", true, true),
                 new ServiceDefinition("SERVICE_MONITORING", ManagedServiceIds.DATABASE_MONITORING, "/api/monitoring", ServiceType.NODE, servicesRoot.resolve("database-monitoring"), "npm start", null, 4101, 4001, true, "PORT", true, true),
                 new ServiceDefinition("SERVICE_BACKUP", ManagedServiceIds.DATABASE_BACKUP, "/api/backup", ServiceType.NODE, servicesRoot.resolve("banco-de-dados").resolve("backup-runner"), "npm start", null, 4102, 4002, true, "PORT", true, true),

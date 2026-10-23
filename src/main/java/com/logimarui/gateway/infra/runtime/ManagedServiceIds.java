@@ -11,6 +11,7 @@ public final class ManagedServiceIds {
     public static final String SAVI = "imarui_savi_automation_service";
     public static final String N8N = "n8n-interno";
     public static final String EVOLUTION = "evolution-interno";
+    public static final String IIAM = "iiam";
     public static final String FRONTEND = "frontend";
 
     private static final Map<String, String> LEGACY_TO_CANONICAL = Map.of(
