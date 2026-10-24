@@ -7,12 +7,15 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
+import org.springframework.http.converter.ByteArrayHttpMessageConverter;
 import org.springframework.web.servlet.function.HandlerFunction;
 import org.springframework.web.servlet.function.RouterFunction;
 import org.springframework.web.servlet.function.ServerRequest;
 import org.springframework.web.servlet.function.ServerResponse;
 
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -215,6 +218,39 @@ class GatewayRoutesConfigTest {
             assertThat(forwardedFor.get()).isEqualTo("192.0.2.10");
         } finally {
             frontendServer.stop(0);
+        }
+    }
+
+    @Test
+    void criticaProxyUsesItsOwnRuntimeAndPreservesOriginalHtml() throws Exception {
+        byte[] original = "<!DOCTYPE html><a href=\"/assets/raw\">Carlos</a><script>fetch('/api/local')</script>\r\n".getBytes(StandardCharsets.UTF_8);
+        AtomicReference<String> receivedTarget = new AtomicReference<>();
+        HttpServer criticaServer = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        criticaServer.createContext("/", exchange -> {
+            receivedTarget.set(exchange.getRequestURI().toString());
+            exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
+            exchange.sendResponseHeaders(200, original.length);
+            exchange.getResponseBody().write(original);
+            exchange.close();
+        });
+        criticaServer.start();
+        try {
+            var registry = new ServiceRegistry(() -> List.of(new ServiceRoute(
+                    "critica-pedidos", "/critica-pedidos",
+                    "http://127.0.0.1:" + criticaServer.getAddress().getPort(), false)));
+            var criticaRoutes = new GatewayRoutesConfig("http://127.0.0.1:1").gatewayRoutes(registry);
+            var request = serverRequest(HttpMethod.GET, "/critica-pedidos/index.html?teste=1");
+            var response = criticaRoutes.route(request).orElseThrow().handle(request);
+            var output = new MockHttpServletResponse();
+            response.writeTo(request.servletRequest(), output, () -> List.of(new ByteArrayHttpMessageConverter()));
+            assertThat(output.getStatus()).isEqualTo(200);
+            assertThat(output.getContentAsByteArray()).isEqualTo(original);
+            assertThat(receivedTarget.get()).isEqualTo("/index.html?teste=1");
+
+            var unavailable = serverRequest(HttpMethod.GET, "/critica-pedidos");
+            assertThat(routes.route(unavailable).orElseThrow().handle(unavailable).statusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        } finally {
+            criticaServer.stop(0);
         }
     }
 

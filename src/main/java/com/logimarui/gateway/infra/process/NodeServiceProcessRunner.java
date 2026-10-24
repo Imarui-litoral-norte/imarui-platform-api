@@ -5,6 +5,8 @@ import com.logimarui.gateway.core.domain.model.ServiceRuntime;
 import com.logimarui.gateway.core.domain.model.ServiceStatus;
 import com.logimarui.gateway.core.domain.model.ServiceType;
 import com.logimarui.gateway.core.port.ServiceProcessRunner;
+import com.logimarui.gateway.core.port.ServiceRuntimeRepository;
+import com.logimarui.gateway.infra.runtime.ManagedServiceIds;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -24,6 +26,7 @@ public class NodeServiceProcessRunner implements ServiceProcessRunner {
     private final ProcessTreeTerminator processTreeTerminator;
     private final WindowsPortInspector windowsPortInspector;
     private final ProcessPortAllocator processPortAllocator;
+    private final ServiceRuntimeRepository serviceRuntimeRepository;
 
     @Override
     public boolean supports(ManagedService service) {
@@ -173,6 +176,12 @@ public class NodeServiceProcessRunner implements ServiceProcessRunner {
         processBuilder.environment().put(portEnvName, String.valueOf(allocatedPort));
         processBuilder.environment().put("PORT", String.valueOf(allocatedPort));
         processBuilder.environment().put("SERVICE_HOST", "0.0.0.0");
+        if (ManagedServiceIds.FRONTEND.equals(service.getId())) {
+            serviceRuntimeRepository.findByServiceId(ManagedServiceIds.CRITICA_PEDIDOS)
+                    .ifPresent(runtime -> processBuilder.environment().put(
+                            "CRITICA_SERVICE_URL", "http://127.0.0.1:" + runtime.getPort()
+                    ));
+        }
     }
 
     private void sleep(long millis) {

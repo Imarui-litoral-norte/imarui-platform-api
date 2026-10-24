@@ -8,6 +8,7 @@ public final class ManagedServiceIds {
     public static final String EXTRACTION = "gerenciador-extracao";
     public static final String DATABASE_MONITORING = "gerenciador-database-monitoring";
     public static final String DATABASE_BACKUP = "gerenciador-database-backup";
+    public static final String CRITICA_PEDIDOS = "critica-pedidos";
     public static final String SAVI = "imarui_savi_automation_service";
     public static final String N8N = "n8n-interno";
     public static final String EVOLUTION = "evolution-interno";
@@ -27,6 +28,7 @@ public final class ManagedServiceIds {
             EXTRACTION, List.of(EXTRACTION, "extrator-manager"),
             DATABASE_MONITORING, List.of(DATABASE_MONITORING, "database-monitoring"),
             DATABASE_BACKUP, List.of(DATABASE_BACKUP, "backup-manager"),
+            CRITICA_PEDIDOS, List.of(CRITICA_PEDIDOS),
             SAVI, List.of(SAVI, "automacao-savi"),
             N8N, List.of(N8N, "n8n"),
             EVOLUTION, List.of(EVOLUTION, "evolution-api"),

@@ -43,6 +43,7 @@ public class GatewayRoutesConfig {
     private static final String DATABASE_PUBLIC_PREFIX = "/gerenciador-database";
     private static final String DATABASE_MONITORING_PUBLIC_PREFIX = DATABASE_PUBLIC_PREFIX + "/monitoring";
     private static final String DATABASE_BACKUP_PUBLIC_PREFIX = DATABASE_PUBLIC_PREFIX + "/backup";
+    private static final String CRITICA_PUBLIC_PREFIX = "/critica-pedidos";
     private static final String EVOLUTION_SERVICE_ID = ManagedServiceIds.EVOLUTION;
     private static final String EVOLUTION_PUBLIC_PREFIX = "/evolution";
     private static final String EVOLUTION_API_PUBLIC_PREFIX = "/evolution-api";
@@ -176,6 +177,8 @@ public class GatewayRoutesConfig {
                 .route(path(DATABASE_MONITORING_PUBLIC_PREFIX + "/**"), request -> proxyToDatabaseMonitoring(request, serviceRegistry))
                 .route(path(DATABASE_BACKUP_PUBLIC_PREFIX), request -> proxyToDatabaseBackup(request, serviceRegistry))
                 .route(path(DATABASE_BACKUP_PUBLIC_PREFIX + "/**"), request -> proxyToDatabaseBackup(request, serviceRegistry))
+                .route(path(CRITICA_PUBLIC_PREFIX), request -> proxyToCriticaPedidos(request, serviceRegistry))
+                .route(path(CRITICA_PUBLIC_PREFIX + "/**"), request -> proxyToCriticaPedidos(request, serviceRegistry))
                 .route(path("/evolution"), request -> proxyToEvolutionManager(request, serviceRegistry))
                 .route(path("/evolution/**"), request -> proxyToEvolutionManager(request, serviceRegistry))
                 .route(path("/evolution-api"), request -> proxyToEvolutionApi(request, serviceRegistry))
@@ -329,6 +332,16 @@ public class GatewayRoutesConfig {
         );
     }
 
+    private ServerResponse proxyToCriticaPedidos(
+            ServerRequest request,
+            ServiceRegistry serviceRegistry
+    ) {
+        return proxyToPrefixedWebApp(
+                request, serviceRegistry, ManagedServiceIds.CRITICA_PEDIDOS,
+                CRITICA_PUBLIC_PREFIX, "Critica Pedidos", true
+        );
+    }
+
     private ServerResponse proxyToN8n(
             ServerRequest request,
             ServiceRegistry serviceRegistry
@@ -464,10 +477,10 @@ public class GatewayRoutesConfig {
         );
 
         try {
-            GatewayProxyResponse response = rewritePrefixedWebAppBodyIfNeeded(
-                    forwardRequest(request, targetUri, publicPrefix),
-                    publicPrefix
-            );
+            GatewayProxyResponse response = forwardRequest(request, targetUri, publicPrefix);
+            if (!ManagedServiceIds.CRITICA_PEDIDOS.equals(serviceId)) {
+                response = rewritePrefixedWebAppBodyIfNeeded(response, publicPrefix);
+            }
 
             ServerResponse.BodyBuilder responseBuilder =
                     ServerResponse.status(response.statusCode());

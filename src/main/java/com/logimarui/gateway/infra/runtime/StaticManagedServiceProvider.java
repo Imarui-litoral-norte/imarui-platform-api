@@ -58,6 +58,7 @@ public class StaticManagedServiceProvider implements ManagedServiceProvider {
                 new ServiceDefinition(SAVI_SERVICE_ENV_PREFIX, SAVI_SERVICE_NAME, "/api/savi", ServiceType.PYTHON, servicesRoot.resolve(SAVI_SERVICE_DIRECTORY), SAVI_SERVICE_COMMAND, null, 4103, 4003, true, "PORT", true, true),
                 new ServiceDefinition("SERVICE_N8N", ManagedServiceIds.N8N, "/api/n8n", ServiceType.DOCKER, servicesRoot.resolve("n8n"), "docker compose up -d", "docker compose down", 5679, 5678, true, "N8N_LOCAL_PORT", false, false),
                 new ServiceDefinition("SERVICE_EVOLUTION", ManagedServiceIds.EVOLUTION, "/api/evolution-api", ServiceType.DOCKER, servicesRoot.resolve("evolution"), "docker compose --env-file .env -p evolution -f docker-compose.yaml up -d", "docker compose --env-file .env -p evolution -f docker-compose.yaml down", 4081, 4080, true, "EVOLUTION_API_PORT", false, false),
+                new ServiceDefinition("SERVICE_CRITICA", ManagedServiceIds.CRITICA_PEDIDOS, "/critica-pedidos", ServiceType.PYTHON, servicesRoot.resolve("critica-pedidos"), "python logimarui_service.py", null, 4104, 4004, false, "PORT", true, true),
                 new ServiceDefinition("SERVICE_FRONTEND", ManagedServiceIds.FRONTEND, "/", ServiceType.NODE, frontendRoot, "npm run build-start", null, 8191, 8091, true, "FRONTEND_PORT", true, true)
         ).stream().map(definition -> buildService(environment, definition, developmentProfile)).toList();
     }
