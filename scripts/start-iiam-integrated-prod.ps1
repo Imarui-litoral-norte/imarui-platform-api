@@ -21,7 +21,8 @@ if($Action -in @('stop','restart')){
         if($listener -and $listener.OwningProcess -notcontains $record.listenerPid){throw ('Service listener ownership mismatch: '+$record.serviceId)}
         if($record.serviceId -eq 'iiam'){
             $child=Get-CimInstance Win32_Process -Filter ('ProcessId='+$record.rootPid)
-            if($child -and ($child.Name -ne 'java.exe' -or !$child.CommandLine.Replace('/','\').Contains((Join-Path $private '../../logimarui_services/imarui-identity-and-access-manager-service/target/imarui-iam-service-0.0.1-SNAPSHOT.jar').Replace('/','\')))){throw 'IIAM process ownership mismatch'}
+            $expectedIiam=[IO.Path]::GetFullPath((Join-Path $private '../../logimarui_services/imarui-identity-and-access-manager-service/target/imarui-iam-service-0.0.1-SNAPSHOT.jar')).Replace('/','\')
+            if($child -and ($child.Name -ne 'java.exe' -or !$child.CommandLine.Replace('/','\').Contains($expectedIiam))){throw 'IIAM process ownership mismatch'}
         }
     }
     foreach($record in $records){

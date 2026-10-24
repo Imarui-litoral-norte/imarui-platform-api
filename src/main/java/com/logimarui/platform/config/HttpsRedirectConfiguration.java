@@ -25,7 +25,7 @@ public class HttpsRedirectConfiguration {
         var connector = new Connector("org.apache.coyote.http11.Http11NioProtocol");
         connector.setPort(httpPort);
         connector.setRedirectPort(httpsPort);
-        factory.addAdditionalTomcatConnectors(connector);
+        factory.addAdditionalConnectors(connector);
         factory.addContextCustomizers(context -> {
             var constraint = new SecurityConstraint();
             constraint.setUserConstraint("CONFIDENTIAL");
