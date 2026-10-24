@@ -44,8 +44,7 @@ class IiamLiveContractTest {
             var csrfResponse = http.send(HttpRequest.newBuilder(URI.create(base + "/authentication/csrf")).GET().build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, csrfResponse.statusCode());
             String csrf = json.readTree(csrfResponse.body()).path("token").asText();
-            byte[] credentials = json.writeValueAsBytes(Map.of("identityKind", account.getProperty("IDENTITY_KIND"),
-                    "identifier", account.getProperty("IDENTIFIER"), "password", account.getProperty("PASSWORD")));
+            byte[] credentials = json.writeValueAsBytes(Map.of("identifier", account.getProperty("IDENTIFIER"), "password", account.getProperty("PASSWORD")));
             var login = http.send(HttpRequest.newBuilder(URI.create(base + "/authentication/login"))
                     .header("Content-Type", "application/json").header("X-XSRF-TOKEN", csrf)
                     .POST(HttpRequest.BodyPublishers.ofByteArray(credentials)).build(), HttpResponse.BodyHandlers.ofString());
@@ -66,8 +65,7 @@ class IiamLiveContractTest {
             var governanceCsrf = governanceHttp.send(HttpRequest.newBuilder(URI.create(base+"/authentication/csrf")).GET().build(),HttpResponse.BodyHandlers.ofString());
             var governanceLogin = governanceHttp.send(HttpRequest.newBuilder(URI.create(base+"/authentication/login"))
                     .header("Content-Type","application/json").header("X-XSRF-TOKEN",json.readTree(governanceCsrf.body()).path("token").asText())
-                    .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(Map.of("identityKind",governor.getProperty("IDENTITY_KIND"),
-                            "identifier",governor.getProperty("IDENTIFIER"),"password",governor.getProperty("PASSWORD"))))).build(),HttpResponse.BodyHandlers.ofString());
+                    .POST(HttpRequest.BodyPublishers.ofByteArray(json.writeValueAsBytes(Map.of("identifier",governor.getProperty("IDENTIFIER"),"password",governor.getProperty("PASSWORD"))))).build(),HttpResponse.BodyHandlers.ofString());
             assertEquals(200,governanceLogin.statusCode());
             String governanceToken=json.readTree(governanceLogin.body()).path("accessToken").asText();
             var denyBody=Map.of("permission",CorePermissionCatalog.SERVICES_READ,"scopeId","00000000-0000-0000-0000-000000000001",

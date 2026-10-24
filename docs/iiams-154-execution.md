@@ -100,8 +100,8 @@ pacotes retidos. O contrato REST passou a examinar somente classes de produção
 excluindo fixtures de teste, e reconhece exclusivamente o proxy `/api/iam` como
 transporte externo fora das raízes REST versionadas do Core.
 
-Ainda faltam homologação completa do proxy HTTPS/cookies, clientes frontend,
-execução integrada do projeto DEV e abertura das solicitações de contas antigas.
+Essas etapas foram concluídas posteriormente no corte integrado e na evolução
+IIAMS-177; os resultados finais estão em `iiams-154-cutover.md`.
 
 ## IIAMS-173: contexto próprio e navegação de aplicações web
 
@@ -139,5 +139,6 @@ Os testes de segurança foram ajustados para distinguir esses dois casos.
 
 Interrupção real do processo IIAM durante uma sessão sintética: supervisor
 respondeu 503 sem fallback. O DEV foi reiniciado pelo launcher local.
-Evidências JSON ficam no runtime privado. A confiança manual do certificado
-e a homologação visual do navegador continuam pendentes.
+Evidências JSON ficam no runtime privado. Em 24/10/2026 a confiança do certificado
+foi confirmada e a homologação visual passou com login, refresh real entre abas,
+logout sincronizado e revisão administrativa das oito solicitações pendentes.

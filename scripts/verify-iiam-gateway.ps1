@@ -34,7 +34,7 @@ $null=Request 'OPTIONS' '/api/iam/authentication/login' $null $null $null @{Orig
 $null=Request 'GET' '/api/iam/authentication/csrf' $null $null $null @{Origin='https://attacker.invalid'};Expect 403 'cors-foreign-origin-rejected'
 $credentials=Get-Content (Join-Path $private 'core-operator.properties') -Raw|ConvertFrom-StringData
 $csrf=(Request 'GET' '/api/iam/authentication/csrf').token;Expect 200 'csrf-cookie'
-$payload=@{identityKind=$credentials.IDENTITY_KIND;identifier=$credentials.IDENTIFIER;password=$credentials.PASSWORD}
+$payload=@{identifier=$credentials.IDENTIFIER;password=$credentials.PASSWORD}
 $null=Request 'POST' '/api/iam/authentication/login' $payload;Expect 403 'login-requires-csrf'
 $session=Request 'POST' '/api/iam/authentication/login' $payload $null $csrf;Expect 200 'login-v1'
 if($session.refreshToken){throw 'Refresh token leaked in JSON'}

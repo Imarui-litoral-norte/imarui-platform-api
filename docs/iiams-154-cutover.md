@@ -56,7 +56,7 @@ As oito pessoas do legado continuam sem Identity ou senha no IIAM.
 
 | Legado | Contrato integrado |
 | --- | --- |
-| `/api/v1/authentication/login` | `/api/iam/authentication/login`: identityKind/identifier/password, CSRF |
+| `/api/v1/authentication/login` | `/api/iam/authentication/login`: identifier/password, CSRF |
 | Refresh no JSON/storage | `/api/iam/authentication/refresh`: cookie HttpOnly e CSRF, rotação serializada por Web Locks |
 | `/api/v1/authentication/me` | `/api/v1/gateway/me`: Identity própria e capacidades via PDP |
 | Logout legado | `/api/iam/authentication/logout`, cookie e CSRF; limpeza do contexto de navegação |
@@ -108,12 +108,12 @@ são reportados, nunca inventados.
 | Fonte MySQL preservada / reexecução do importador | 8 contas na fonte; 8 solicitações pendentes, sem duplicação |
 | Operador administrativo / contexto próprio / revisão | acesso autorizado pela API às 8 solicitações PENDING; sem aprovação |
 | Formulários públicos no frontend interno | login e solicitação renderizaram; sem envio de formulário |
-| Login HTTPS / refresh real em várias abas | pendente da confiança manual do certificado |
+| Login HTTPS / refresh real em várias abas | passou: recarregamento simultâneo em duas abas, três rotações sem replay e logout sincronizado |
 | Serviços desabilitados e fluxos SMTP | sem homologação operacional nesta máquina |
 
 Fonte IIAM fixada em `4a299044b767d11a0c7be0db33298043b570b9dd`, checkout
 concorrente sem alterações no momento da conferência. Artefato isolado no snapshot
-privado `build-v1`; o checkout do outro agente não foi modificado.
+privado `build-v1` na rodada original. IIAMS-177 passou a autorizar alterações na main do IIAM; o runtime atualizado usa `build-identity-update`.
 SHA256 do artefato IIAM: `8BFC6F2F8525DE0B011D3909CE48C533FFFCD715086C009403CBBC9FD8B4CFB3`.
 
 ## Rollback
@@ -125,3 +125,26 @@ o schema inclusive na EntityManagerFactory customizada, sem `update` implícito.
 Os fontes removidos estão no arquivo local com manifesto SHA256. A volta a um
 snapshot anterior exige considerar que alterações posteriores do IIAM não existem
 no legado. Não houve merge, deploy, VPS ou alteração do checkout PROD nesta rodada.
+
+## Evolução IIAMS-177
+
+Login, recuperação e ativação localizam a Identity automaticamente. Apelido/e-mail
+são globais; criação pública usa `/identity-applications/users` ou `/services`.
+O POST polimórfico anterior foi retirado após atualizar os consumidores locais.
+V26 recusa colisões sem reparo automático; V27 preserva o tipo solicitado e registra
+`approvedKind`. Não converte identidades existentes. Antes do upgrade DEV foi salvo
+backup privado e fingerprints de UUIDs, hashes de credencial e solicitações.
+O launcher publica o artefato privado `build-identity-update/target/imarui-iam-service-0.0.1-SNAPSHOT.jar`.
+
+Homologação final de 24/10/2026: IIAM 367 testes aprovados; Core 110 testes sem
+falhas/erros, 3 skips READ_DB; frontend npm test, typecheck, lint focado e build
+webpack aprovados. O contrato real de identificação passou em seis verificações,
+além dos 22 cenários do gateway. Login por apelido e por e-mail renovou a mesma
+Identity. No navegador, login levou a `/inicio`; duas abas recarregadas juntas
+mantiveram acesso e logout em uma levou ambas ao login. O operador de governança
+visualizou as oito solicitações e as opções PERSON/SERVICE na revisão, sem aprovar.
+
+As migrations V26/V27 foram aplicadas no DEV após backup privado. Fingerprints
+confirmaram preservação de UUIDs, hashes de senha e dados originais das solicitações;
+as oito continuam PENDING. IIAM main `7ad6269`, artefato SHA256
+`2879A948ABAFEE2BEE22CFE0E84318C7CCF6FA510002AAA8FA80D26F2068B186`.

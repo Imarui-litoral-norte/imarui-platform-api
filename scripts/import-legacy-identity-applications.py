@@ -83,7 +83,7 @@ def main():
         if errors:
             issues.append({"legacyUserId": user["id"], "reasons": errors})
             continue
-        payload = {"type": "PERSON", "fullName": full_name, "cpf": cpf, "email": email,
+        payload = {"name": full_name, "document": cpf, "email": email,
                    "nickname": f"legacy-core-{user['id']}"}
         birth = user.get("birth_data")
         if isinstance(birth, dt.date) and birth < dt.date.today():
@@ -107,7 +107,7 @@ def main():
         csrf = call("GET", "/authentication/csrf")["token"]
         operator = properties(private / "operator.properties")
         token = call("POST", "/authentication/login", headers={"X-XSRF-TOKEN": csrf},
-                     json={"identityKind": operator["IDENTITY_KIND"], "identifier": operator["IDENTIFIER"], "password": operator["PASSWORD"]})["accessToken"]
+                     json={"identifier": operator["IDENTIFIER"], "password": operator["PASSWORD"]})["accessToken"]
         existing = call("GET", "/api/v1/admin/identity-applications", headers={"Authorization": "Bearer " + token})
         try:
             for user, payload in prepared:
@@ -123,7 +123,7 @@ def main():
                     matched += 1
                     application = prior
                 else:
-                    application = call("POST", "/api/v1/identity-applications", json=payload)
+                    application = call("POST", "/api/v1/identity-applications/users", json=payload)
                     created += 1
                     existing.append(application)
                 if application.get("status") != "PENDING" or any(application.get(field) for field in (

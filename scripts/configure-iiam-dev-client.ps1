@@ -44,7 +44,7 @@ if(-not (Test-Path $operatorFile)){
 }
 $operator=Get-Content $operatorFile -Raw | ConvertFrom-StringData
 $csrf=(Request 'GET' '/authentication/csrf').token
-$session=Request 'POST' '/authentication/login' @{identityKind=$operator.IDENTITY_KIND;identifier=$operator.IDENTIFIER;password=$operator.PASSWORD}
+$session=Request 'POST' '/authentication/login' @{identifier=$operator.IDENTIFIER;password=$operator.PASSWORD}
 $bearer=$session.accessToken
 $stateFile=Join-Path $private 'core-provisioning-state.json'
 $state=if(Test-Path $stateFile){Get-Content $stateFile -Raw|ConvertFrom-Json -AsHashtable}else{@{}}
@@ -98,11 +98,11 @@ try {
         $state.devTenantActive=$true;SaveState
     }
     if(-not $state.consumerApplicationId){
-        $application=Request 'POST' '/api/v1/identity-applications' @{type='SERVICE';nickname='logimarui-dev-user';name='Synthetic Core DEV consumer';email='dev-user@localhost.invalid'}
+        $application=Request 'POST' '/api/v1/identity-applications/services' @{nickname='logimarui-dev-user';name='Synthetic Core DEV consumer';email='dev-user@localhost.invalid'}
         $state.consumerApplicationId=$application.id;SaveState
     }
     if(-not $state.consumerIdentityId){
-        $application=Request 'POST' "/api/v1/admin/identity-applications/$($state.consumerApplicationId)/approve" @{tenantId=$state.devTenantId;affiliation=@{type='EXTERNAL'}}
+        $application=Request 'POST' "/api/v1/admin/identity-applications/$($state.consumerApplicationId)/approve" @{tenantId=$state.devTenantId;identityKind='SERVICE';affiliation=@{type='EXTERNAL'}}
         $state.consumerIdentityId=$application.resolvedIdentityId;SaveState
     }
     $consumerFile=Join-Path $private 'core-operator.properties'

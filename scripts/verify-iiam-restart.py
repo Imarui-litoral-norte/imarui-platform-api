@@ -22,7 +22,7 @@ def call(method,url,**kwargs):
     return response.json() if response.content else None
 csrf=call("GET",iam+"/authentication/csrf")["token"]
 tokens=call("POST",iam+"/authentication/login",headers={"X-XSRF-TOKEN":csrf},json={
-    "identityKind":credentials["IDENTITY_KIND"],"identifier":credentials["IDENTIFIER"],"password":credentials["PASSWORD"]})
+    "identifier":credentials["IDENTIFIER"],"password":credentials["PASSWORD"]})
 try:
     headers={"Authorization":"Bearer "+tokens["accessToken"]}
     before=call("GET",base+"/api/v1/admin/services/runtime",headers=headers)
