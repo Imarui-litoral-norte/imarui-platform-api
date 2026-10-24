@@ -5,6 +5,14 @@ $core=Join-Path $workspace 'logimarui-core-api'
 $private=[IO.Path]::GetFullPath($RuntimeDirectory)
 $javaHome='C:\Users\lucas.l\.jdks\ms-17.0.18'
 . (Join-Path $PSScriptRoot 'managed-runtime-ownership.ps1')
+if($Action -eq 'start' -and (Test-Path -LiteralPath (Join-Path $private 'core-integrated.pid'))){
+    $savedPid=[int][IO.File]::ReadAllText((Join-Path $private 'core-integrated.pid'))
+    $saved=Get-CimInstance Win32_Process -Filter ('ProcessId='+$savedPid)
+    $https=Get-NetTCPConnection -State Listen -LocalPort 443 -ErrorAction SilentlyContinue
+    if($saved -and $saved.Name -eq 'java.exe' -and $saved.CommandLine.Contains((Join-Path $core 'target/logimarui-core-api-0.0.1-SNAPSHOT.jar')) -and $https.OwningProcess -contains $savedPid){
+        Write-Output ('Integrated PROD already running, PID '+$savedPid);return
+    }
+}
 if($Action -in @('stop','restart')){
     $corePidFile=Join-Path $private 'core-integrated.pid'
     if(!(Test-Path -LiteralPath $corePidFile)){throw 'No integrated Core ownership record'}
