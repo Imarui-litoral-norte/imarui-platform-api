@@ -64,6 +64,8 @@ LoadEnvironment (Join-Path $private 'core-client.properties')
 $env:LOGIMARUI_PROFILE='local';$env:SPRING_PROFILES_ACTIVE='local'
 $env:LOGIMARUI_ROOT=$workspace;$env:LOGIMARUI_SERVICES_ROOT=Join-Path $workspace 'logimarui_services'
 $env:CORE_API_PORT='443';$env:CORE_PUBLIC_ORIGIN='https://logistica.imaruileste.dominiolocal'
+# Temporary PROD policy: every live authenticated session can use Core and gateway services.
+$env:CORE_AUTHORIZATION_PERMISSIONS_REQUIRED='false'
 $env:APP_SERVER_HTTP_REDIRECT_ENABLED='true';$env:APP_SERVER_HTTP_REDIRECT_PORT='80'
 $env:LOGIMARUI_NEXT_DIST_DIR='.next-iiam-production';$env:LOGIMARUI_TSCONFIG_PATH='tsconfig.iiam-production.json'
 $env:APP_CORS_ALLOWED_ORIGINS='https://logistica.imaruileste.dominiolocal,https://localhost'

@@ -20,7 +20,7 @@ class IiamContextControllerTest {
         when(pdp.currentIdentity("actor-access",actor)).thenReturn(JsonMapper.builder().build().readTree(
                 "{\"id\":\""+actor.identityId()+"\",\"nickname\":\"account\"}"));
         when(pdp.decide("actor-access",actor,CorePermissionCatalog.SERVICES_READ,"GATEWAY_SERVER","local")).thenReturn(true);
-        var controller=new IiamContextController(pdp,services,new IiamBrowserAccess(new MockEnvironment()));
+        var controller=new IiamContextController(pdp,services,new IiamBrowserAccess(new MockEnvironment()),new CoreAccessPolicy(true));
         var request=new MockHttpServletRequest("GET","/api/v1/gateway/me");
         request.addHeader("Authorization","Bearer actor-access");request.addHeader("X-Identity-Id",UUID.randomUUID().toString());
         var response=controller.me(actor,request);
@@ -31,7 +31,7 @@ class IiamContextControllerTest {
     }
     @Test void insecureBrowserContextNeverWritesCredentialCookies() {
         var pdp=mock(IiamPdpClient.class);var services=mock(ManagedServiceProvider.class);
-        var controller=new IiamContextController(pdp,services,new IiamBrowserAccess(new MockEnvironment()));
+        var controller=new IiamContextController(pdp,services,new IiamBrowserAccess(new MockEnvironment()),new CoreAccessPolicy(true));
         var response=new MockHttpServletResponse();
         assertEquals(403,controller.establish(null,new MockHttpServletRequest("POST","/api/v1/gateway/browser-context"),response).getStatusCode().value());
         assertTrue(response.getHeaders("Set-Cookie").isEmpty());verifyNoInteractions(pdp);
@@ -42,12 +42,32 @@ class IiamContextControllerTest {
         var pdp=mock(IiamPdpClient.class);var services=mock(ManagedServiceProvider.class);
         when(services.findAll()).thenReturn(List.of(new com.logimarui.gateway.core.domain.model.ManagedService(
                 "gerenciador-extracao","/api/extrator",com.logimarui.gateway.core.domain.model.ServiceType.PYTHON,".","python app.py",4000,true)));
-        var controller=new IiamContextController(pdp,services,new IiamBrowserAccess(new MockEnvironment()));
+        var controller=new IiamContextController(pdp,services,new IiamBrowserAccess(new MockEnvironment()),new CoreAccessPolicy(false));
         var request=new MockHttpServletRequest("POST","/api/v1/gateway/browser-context");request.setSecure(true);
         request.addHeader("Authorization","Bearer actor-access");
         var response=new MockHttpServletResponse();
         assertEquals(204,controller.establish(actor,request,response).getStatusCode().value());
         assertTrue(response.getHeaders("Set-Cookie").stream().anyMatch(c->c.startsWith("LG_SERVICE_ACCESS=actor-access;") && c.contains("Path=/api/extrator;")));
+        verify(pdp).currentIdentity("actor-access",actor);
+        verify(pdp,never()).decide(anyString(),any(),anyString(),anyString(),anyString());
+    }
+
+    @Test void authenticatedModePublishesAllowedCapabilitiesForEveryCoreModuleWithoutGrants() throws Exception {
+        var actor=new IiamPrincipal(UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID(),Instant.now().plusSeconds(900));
+        var pdp=mock(IiamPdpClient.class);var services=mock(ManagedServiceProvider.class);
+        when(services.findAll()).thenReturn(List.of());
+        when(pdp.currentIdentity("actor-access",actor)).thenReturn(JsonMapper.builder().build().readTree(
+                "{\"id\":\""+actor.identityId()+"\",\"nickname\":\"account\"}"));
+        var controller=new IiamContextController(pdp,services,new IiamBrowserAccess(new MockEnvironment()),new CoreAccessPolicy(false));
+        var request=new MockHttpServletRequest("GET","/api/v1/gateway/me");
+        request.addHeader("Authorization","Bearer actor-access");
+        var response=controller.me(actor,request);
+        var capabilities=(List<IiamContextController.Capability>)response.getBody().get("capabilities");
+        assertEquals(10,capabilities.size());
+        assertTrue(capabilities.stream().allMatch(IiamContextController.Capability::allowed));
+        assertEquals(Set.of(CorePermissionCatalog.SERVICES_READ,CorePermissionCatalog.SERVICES_MANAGE,
+                CorePermissionCatalog.RECEIVABLES_READ,CorePermissionCatalog.MODULES_USE),
+                new HashSet<>((List<String>)response.getBody().get("authorities")));
         verify(pdp).currentIdentity("actor-access",actor);
         verify(pdp,never()).decide(anyString(),any(),anyString(),anyString(),anyString());
     }

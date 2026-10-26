@@ -18,6 +18,7 @@ public class IiamContextController {
     private final IiamPdpClient pdp;
     private final ManagedServiceProvider services;
     private final IiamBrowserAccess browser;
+    private final CoreAccessPolicy accessPolicy;
     public record Capability(String permission,String resourceType,String resourceId,boolean allowed) {}
 
     @GetMapping("/me")
@@ -31,7 +32,7 @@ public class IiamContextController {
         for (String module:List.of("customerlabel","journey","memberships","occurrence","operationalload","replenishment","vehicles"))
             capabilities.add(capability(token,actor,CorePermissionCatalog.MODULES_USE,"CORE_MODULE",module));
         services.findAll().stream().filter(s -> s.isEnabled() && s.isRequiresAuthentication() && IiamBrowserAccess.PATHS.containsKey(s.getId()))
-                .forEach(service -> capabilities.add(new Capability(CorePermissionCatalog.SERVICES_USE,"GATEWAY_SERVICE",service.getId(),true)));
+                .forEach(service -> capabilities.add(capability(token,actor,CorePermissionCatalog.SERVICES_USE,"GATEWAY_SERVICE",service.getId())));
         var authorities=capabilities.stream().filter(Capability::allowed).map(Capability::permission).distinct().toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of(
                 "userId",actor.identityId(),"identityId",actor.identityId(),"sessionId",actor.sessionId(),
@@ -45,6 +46,7 @@ public class IiamContextController {
         String token=token(request);pdp.currentIdentity(token,actor);
         Set<String> allowed=new HashSet<>();
         services.findAll().stream().filter(s -> s.isEnabled() && s.isRequiresAuthentication() && IiamBrowserAccess.PATHS.containsKey(s.getId()))
+                .filter(service -> allowed(token,actor,CorePermissionCatalog.SERVICES_USE,"GATEWAY_SERVICE",service.getId()))
                 .forEach(service -> allowed.add(service.getId()));
         browser.write(response,token,actor.expiresAt(),allowed);
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
@@ -54,7 +56,10 @@ public class IiamContextController {
         browser.clear(response);return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }
     private Capability capability(String token,IiamPrincipal actor,String permission,String type,String resource) {
-        return new Capability(permission,type,resource,pdp.decide(token,actor,permission,type,resource));
+        return new Capability(permission,type,resource,allowed(token,actor,permission,type,resource));
+    }
+    private boolean allowed(String token,IiamPrincipal actor,String permission,String type,String resource) {
+        return !accessPolicy.permissionsRequired() || pdp.decide(token,actor,permission,type,resource);
     }
     private String token(HttpServletRequest request) {
         String header=request.getHeader(HttpHeaders.AUTHORIZATION);

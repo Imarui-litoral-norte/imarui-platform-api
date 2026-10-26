@@ -26,6 +26,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final IiamRequestPolicy requestPolicy;
     private final IiamPdpClient pdp;
     private final IiamBrowserAccess browser;
+    private final CoreAccessPolicy accessPolicy;
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -64,10 +65,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             var principal = tokenParser.parseAndValidate(token);
-            // Gateway applications currently require a live login, without per-service grants.
-            boolean loginOnlyService = decision != null && "GATEWAY_SERVICE".equals(decision.resourceType());
-            if (loginOnlyService) pdp.currentIdentity(token, principal);
-            if (decision != null && !loginOnlyService && !pdp.decide(token, principal, decision.permission(), decision.resourceType(), decision.resourceId())) {
+            boolean loginOnly = decision != null && !accessPolicy.permissionsRequired();
+            if (loginOnly) pdp.currentIdentity(token, principal);
+            if (decision != null && !loginOnly && !pdp.decide(token, principal, decision.permission(), decision.resourceType(), decision.resourceId())) {
                 problem(response, 403, "ACCESS_DENIED");
                 return;
             }

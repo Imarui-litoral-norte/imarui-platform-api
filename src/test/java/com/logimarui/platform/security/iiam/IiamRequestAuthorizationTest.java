@@ -23,7 +23,10 @@ class IiamRequestAuthorizationTest {
         SecurityContextHolder.clearContext();
         when(services.findAll()).thenReturn(List.of());
         when(tokens.parseAndValidate("signed-access")).thenReturn(actor);
-        filter=new JwtAuthenticationFilter(tokens,new IiamRequestPolicy(services),pdp,new IiamBrowserAccess(new org.springframework.mock.env.MockEnvironment()));
+        configureMode(true);
+    }
+    private void configureMode(boolean permissionsRequired) {
+        filter=new JwtAuthenticationFilter(tokens,new IiamRequestPolicy(services),pdp,new IiamBrowserAccess(new org.springframework.mock.env.MockEnvironment()),new CoreAccessPolicy(permissionsRequired));
     }
     @AfterEach void cleanup() { SecurityContextHolder.clearContext(); }
     private MockHttpServletResponse perform(String method,String path,boolean bearer,AtomicBoolean called) throws Exception {
@@ -86,6 +89,7 @@ class IiamRequestAuthorizationTest {
                 "gerenciador-extracao","/api/extrator",com.logimarui.gateway.core.domain.model.ServiceType.PYTHON,".","python app.py",4000,true)));
     }
     @Test void gatewayServiceRequiresLiveLoginWithoutPermissionGrant() throws Exception {
+        configureMode(false);
         registerExtrator();
         var called=new AtomicBoolean();
         assertEquals(200,perform("GET","/api/extrator/status",true,called).getStatus());
@@ -93,6 +97,7 @@ class IiamRequestAuthorizationTest {
         verify(pdp,never()).decide(anyString(),any(),anyString(),anyString(),anyString());
     }
     @Test void gatewayServiceStillRejectsAnonymousAndRevokedSessions() throws Exception {
+        configureMode(false);
         registerExtrator();
         var anonymous=new AtomicBoolean();
         assertEquals(401,perform("GET","/api/extrator/status",false,anonymous).getStatus());
@@ -101,5 +106,40 @@ class IiamRequestAuthorizationTest {
         var revoked=new AtomicBoolean();
         assertEquals(401,perform("GET","/api/extrator/status",true,revoked).getStatus());
         assertFalse(revoked.get());
+    }
+
+    @Test void authenticatedModeAllowsAllCoreModulesAndSupervisorWithoutStoredGrants() throws Exception {
+        configureMode(false);
+        for (String path:List.of("/api/v1/admin/services/overview","/api/v1/journey/tml",
+                "/api/v1/customers/1/label","/api/v1/receivables/filters","/api/v1/vehicles",
+                "/api/v2/occurrences","/api/v1/memberships","/api/v1/replenishments",
+                "/api/v1/operationalload")) {
+            var called=new AtomicBoolean();
+            assertEquals(200,perform("GET",path,true,called).getStatus(),path);
+            assertTrue(called.get(),path);
+        }
+        assertEquals(9,mockingDetails(pdp).getInvocations().size());
+        verify(pdp,never()).decide(anyString(),any(),anyString(),anyString(),anyString());
+    }
+
+    @Test void authenticatedModeStillRejectsAnonymousInvalidAndRevokedCoreSessions() throws Exception {
+        configureMode(false);
+        var called=new AtomicBoolean();
+        assertEquals(401,perform("GET","/api/v1/receivables/filters",false,called).getStatus());
+        assertFalse(called.get());verifyNoInteractions(pdp);
+        when(pdp.currentIdentity("signed-access",actor)).thenThrow(new IiamPdpClient.ActorInvalid());
+        assertEquals(401,perform("GET","/api/v1/receivables/filters",true,called).getStatus());
+        assertFalse(called.get());assertNull(SecurityContextHolder.getContext().getAuthentication());
+        when(tokens.parseAndValidate("signed-access")).thenThrow(new org.springframework.security.oauth2.jwt.JwtException("invalid"));
+        assertEquals(401,perform("GET","/api/v1/journey/tml",true,called).getStatus());
+        assertFalse(called.get());
+    }
+
+    @Test void authenticatedModeDoesNotAllowAccessWhenSessionValidationIsUnavailable() throws Exception {
+        configureMode(false);
+        when(pdp.currentIdentity("signed-access",actor)).thenThrow(new IiamPdpClient.Unavailable());
+        var called=new AtomicBoolean();
+        assertEquals(503,perform("GET","/api/v1/journey/tml",true,called).getStatus());
+        assertFalse(called.get());
     }
 }
