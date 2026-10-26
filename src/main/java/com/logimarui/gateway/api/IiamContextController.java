@@ -31,7 +31,7 @@ public class IiamContextController {
         for (String module:List.of("customerlabel","journey","memberships","occurrence","operationalload","replenishment","vehicles"))
             capabilities.add(capability(token,actor,CorePermissionCatalog.MODULES_USE,"CORE_MODULE",module));
         services.findAll().stream().filter(s -> s.isEnabled() && s.isRequiresAuthentication() && IiamBrowserAccess.PATHS.containsKey(s.getId()))
-                .forEach(service -> capabilities.add(capability(token,actor,CorePermissionCatalog.SERVICES_USE,"GATEWAY_SERVICE",service.getId())));
+                .forEach(service -> capabilities.add(new Capability(CorePermissionCatalog.SERVICES_USE,"GATEWAY_SERVICE",service.getId(),true)));
         var authorities=capabilities.stream().filter(Capability::allowed).map(Capability::permission).distinct().toList();
         return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(Map.of(
                 "userId",actor.identityId(),"identityId",actor.identityId(),"sessionId",actor.sessionId(),
@@ -45,7 +45,7 @@ public class IiamContextController {
         String token=token(request);pdp.currentIdentity(token,actor);
         Set<String> allowed=new HashSet<>();
         services.findAll().stream().filter(s -> s.isEnabled() && s.isRequiresAuthentication() && IiamBrowserAccess.PATHS.containsKey(s.getId()))
-                .forEach(service -> { if(pdp.decide(token,actor,CorePermissionCatalog.SERVICES_USE,"GATEWAY_SERVICE",service.getId())) allowed.add(service.getId()); });
+                .forEach(service -> allowed.add(service.getId()));
         browser.write(response,token,actor.expiresAt(),allowed);
         return ResponseEntity.noContent().cacheControl(CacheControl.noStore()).build();
     }

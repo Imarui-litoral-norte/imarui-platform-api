@@ -5,6 +5,16 @@ $core=Join-Path $workspace 'logimarui-core-api'
 $private=[IO.Path]::GetFullPath($RuntimeDirectory)
 $javaHome='C:\Users\lucas.l\.jdks\ms-17.0.18'
 . (Join-Path $PSScriptRoot 'managed-runtime-ownership.ps1')
+if($Action -eq 'start'){
+    $expectedArtifact=[IO.Path]::GetFullPath((Join-Path $core 'target/logimarui-core-api-0.0.1-SNAPSHOT.jar')).Replace('/','\')
+    foreach($httpsListener in @(Get-NetTCPConnection -State Listen -LocalPort 443 -ErrorAction SilentlyContinue)){
+        $runningCore=Get-CimInstance Win32_Process -Filter ('ProcessId='+$httpsListener.OwningProcess)
+        if($runningCore -and $runningCore.Name -eq 'java.exe' -and $runningCore.CommandLine -and $runningCore.CommandLine.Replace('/','\').Contains('"'+$expectedArtifact+'"')){
+            [IO.File]::WriteAllText((Join-Path $private 'core-integrated.pid'),[string]$runningCore.ProcessId)
+            Write-Output ('Integrated PROD already running, PID '+$runningCore.ProcessId);return
+        }
+    }
+}
 if($Action -eq 'start' -and (Test-Path -LiteralPath (Join-Path $private 'core-integrated.pid'))){
     $savedPid=[int][IO.File]::ReadAllText((Join-Path $private 'core-integrated.pid'))
     $saved=Get-CimInstance Win32_Process -Filter ('ProcessId='+$savedPid)

@@ -80,4 +80,26 @@ class IiamRequestAuthorizationTest {
         var called=new AtomicBoolean();assertEquals(200,perform("PUT","/critica-pedidos/api/mock",false,called).getStatus());assertTrue(called.get());
         verifyNoInteractions(pdp,tokens);
     }
+
+    private void registerExtrator() {
+        when(services.findAll()).thenReturn(List.of(new com.logimarui.gateway.core.domain.model.ManagedService(
+                "gerenciador-extracao","/api/extrator",com.logimarui.gateway.core.domain.model.ServiceType.PYTHON,".","python app.py",4000,true)));
+    }
+    @Test void gatewayServiceRequiresLiveLoginWithoutPermissionGrant() throws Exception {
+        registerExtrator();
+        var called=new AtomicBoolean();
+        assertEquals(200,perform("GET","/api/extrator/status",true,called).getStatus());
+        assertTrue(called.get());verify(pdp).currentIdentity("signed-access",actor);
+        verify(pdp,never()).decide(anyString(),any(),anyString(),anyString(),anyString());
+    }
+    @Test void gatewayServiceStillRejectsAnonymousAndRevokedSessions() throws Exception {
+        registerExtrator();
+        var anonymous=new AtomicBoolean();
+        assertEquals(401,perform("GET","/api/extrator/status",false,anonymous).getStatus());
+        assertFalse(anonymous.get());
+        when(pdp.currentIdentity("signed-access",actor)).thenThrow(new IiamPdpClient.ActorInvalid());
+        var revoked=new AtomicBoolean();
+        assertEquals(401,perform("GET","/api/extrator/status",true,revoked).getStatus());
+        assertFalse(revoked.get());
+    }
 }

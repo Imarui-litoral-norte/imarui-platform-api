@@ -64,7 +64,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
         try {
             var principal = tokenParser.parseAndValidate(token);
-            if (decision != null && !pdp.decide(token, principal, decision.permission(), decision.resourceType(), decision.resourceId())) {
+            // Gateway applications currently require a live login, without per-service grants.
+            boolean loginOnlyService = decision != null && "GATEWAY_SERVICE".equals(decision.resourceType());
+            if (loginOnlyService) pdp.currentIdentity(token, principal);
+            if (decision != null && !loginOnlyService && !pdp.decide(token, principal, decision.permission(), decision.resourceType(), decision.resourceId())) {
                 problem(response, 403, "ACCESS_DENIED");
                 return;
             }
@@ -86,7 +89,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         } catch (com.logimarui.platform.security.jwt.IiamJwtDecoder.KeysUnavailable unavailable) {
             problem(response,503,"IIAM_KEYS_UNAVAILABLE");
             return;
-        } catch (JwtException | IllegalArgumentException e) {
+        } catch (IiamPdpClient.ActorInvalid | JwtException | IllegalArgumentException e) {
             SecurityContextHolder.clearContext();
             problem(response,401,"INVALID_ACCESS_TOKEN");
             return;
