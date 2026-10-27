@@ -19,6 +19,12 @@ function curl.exe {
     $global:launcherTestState.requests++;$global:LASTEXITCODE=0
     if($global:launcherTestState.failNextProbe){$global:launcherTestState.failNextProbe=$false;'503'}else{'200'}
 }
+function npm.cmd {
+    $global:launcherTestState.builds++
+    if($global:launcherTestState.failBuild){$global:LASTEXITCODE=1;return}
+    Set-Content -LiteralPath (Join-Path $fixture 'logImarui-frontend/.next-iiam-production/BUILD_ID') -Value 'rebuilt-fixture'
+    $global:LASTEXITCODE=0
+}
 function Start-Process {
     param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle,[switch]$PassThru,$RedirectStandardOutput,$RedirectStandardError)
     if($WindowStyle -ne 'Hidden'){throw 'Background launch must be hidden'}
@@ -72,5 +78,17 @@ if($global:launcherTestState.requests -ne ($before+4) -or !$global:launcherTestS
 $before=$global:launcherTestState.requests
 & $launcher -Action restart
 if($global:launcherTestState.stopped.Count -ne 2 -or $global:launcherTestState.requests -ne ($before+3) -or !$global:launcherTestState.listening){throw 'Restart failed'}
-Write-Output 'PASS: 7 isolated PROD launcher regression scenarios; no real processes changed.'
+# 8. Missing frontend build is generated before restarting.
+Remove-Item -LiteralPath (Join-Path $fixture 'logImarui-frontend/.next-iiam-production/BUILD_ID')
+& $launcher -Action restart
+if($global:launcherTestState.builds -ne 1 -or $global:launcherTestState.stopped.Count -ne 3){throw 'Automatic frontend build failed'}
+
+# 9. A failed build must preserve the running Core and its managed processes.
+Remove-Item -LiteralPath (Join-Path $fixture 'logImarui-frontend/.next-iiam-production/BUILD_ID')
+$global:launcherTestState.failBuild=$true
+try{& $launcher -Action restart;throw 'Failed build accepted'}catch{
+    if($_.Exception.Message -notlike '*Falha ao gerar o frontend*'){throw}
+}
+if($global:launcherTestState.stopped.Count -ne 3 -or !$global:launcherTestState.listening){throw 'Failed build stopped the running Core'}
+Write-Output 'PASS: 9 isolated PROD launcher regression scenarios; no real processes changed.'
 Write-Output ('Fixture: '+$fixture)

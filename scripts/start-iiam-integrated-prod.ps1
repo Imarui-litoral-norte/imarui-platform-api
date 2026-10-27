@@ -5,6 +5,27 @@ $core=Join-Path $workspace 'logimarui-core-api'
 $private=[IO.Path]::GetFullPath($RuntimeDirectory)
 $javaHome='C:\Users\lucas.l\.jdks\ms-17.0.18'
 . (Join-Path $PSScriptRoot 'managed-runtime-ownership.ps1')
+function Ensure-ProductionFrontendBuild {
+    $frontend=Join-Path $workspace 'logImarui-frontend'
+    $buildId=Join-Path $frontend '.next-iiam-production/BUILD_ID'
+    if(Test-Path -LiteralPath $buildId){return}
+    $buildLog=Join-Path $private 'production-frontend-build.log'
+    Write-Output 'Build de producao do frontend ausente. Gerando automaticamente antes de iniciar/reiniciar...'
+    Push-Location $frontend
+    $previousErrorPreference=$ErrorActionPreference
+    try{
+        # npm/Next warnings on stderr must be logged without aborting PowerShell 5.
+        $ErrorActionPreference='Continue'
+        & npm.cmd run build 2>&1 | ForEach-Object {
+            Add-Content -LiteralPath $buildLog -Value ([string]$_) -Encoding UTF8
+        }
+        $ErrorActionPreference=$previousErrorPreference
+        if($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $buildId)){
+            throw 'Falha ao gerar o frontend. Servidor existente preservado. Consulte .runtime/iiam/production-frontend-build.log'
+        }
+    }finally{$ErrorActionPreference=$previousErrorPreference;Pop-Location}
+    Write-Output 'Build de producao do frontend concluido.'
+}
 function Test-CoreIdentity($Snapshot){
     if(!$Snapshot){return $false}
     if([string]::IsNullOrWhiteSpace($Snapshot.CommandLine)){
@@ -49,6 +70,49 @@ if($Action -eq 'start' -and (Test-Path -LiteralPath $corePidFile)){
     if(Test-CoreIdentity $saved){Wait-IntegratedReady $savedPid;return}
     Remove-Item -LiteralPath $corePidFile
 }
+function Initialize-ProductionLaunch {
+if(!(Test-Path -LiteralPath (Join-Path $core 'target/logimarui-core-api-0.0.1-SNAPSHOT.jar'))){
+    throw 'Core compilado ausente. Compile o Core antes de iniciar/reiniciar; servidor existente preservado.'
+}
+function LoadEnvironment([string]$Path) {
+    foreach($line in Get-Content -LiteralPath $Path){
+        if($line -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$'){
+            [Environment]::SetEnvironmentVariable($matches[1],$matches[2],'Process')
+        }
+    }
+}
+LoadEnvironment (Join-Path $workspace '.env')
+LoadEnvironment (Join-Path $private 'core-client.properties')
+$env:LOGIMARUI_PROFILE='local';$env:SPRING_PROFILES_ACTIVE='local'
+$env:LOGIMARUI_ROOT=$workspace;$env:LOGIMARUI_SERVICES_ROOT=Join-Path $workspace 'logimarui_services'
+$env:CORE_API_PORT='443';$env:CORE_PUBLIC_ORIGIN='https://logistica.imaruileste.dominiolocal'
+# Temporary PROD policy: every live authenticated session can use Core and gateway services.
+$env:CORE_AUTHORIZATION_PERMISSIONS_REQUIRED='false'
+$env:APP_SERVER_HTTP_REDIRECT_ENABLED='true';$env:APP_SERVER_HTTP_REDIRECT_PORT='80'
+$env:LOGIMARUI_NEXT_DIST_DIR='.next-iiam-production';$env:LOGIMARUI_TSCONFIG_PATH='tsconfig.iiam-production.json'
+$env:APP_CORS_ALLOWED_ORIGINS='https://logistica.imaruileste.dominiolocal,https://localhost'
+$env:APP_FRONTEND_URL='http://127.0.0.1:8091';$env:FRONTEND_PORT='8091'
+$env:NEXT_PUBLIC_GATEWAY_URL=''
+$env:NEXT_PUBLIC_CORE_API_URL='';$env:NEXT_PUBLIC_API_URL='';$env:NEXT_PUBLIC_BACKEND_URL=''
+$env:SERVICE_FRONTEND_COMMAND='npm run start'
+$env:SERVICE_IIAM_ENABLED='true';$env:SERVICE_IIAM_START_ON_BOOT='true'
+$env:SERVICE_IIAM_ENV_FILE=Join-Path $private 'iiam.properties'
+$env:SERVICE_IIAM_JAR=Join-Path $private '../../logimarui_services/imarui-identity-and-access-manager-service/target/imarui-iam-service-0.0.1-SNAPSHOT.jar'
+$env:SERVICE_IIAM_JAVA=Join-Path $javaHome 'bin/java.exe'
+$env:SERVER_SSL_ENABLED='true';$env:SERVER_SSL_KEY_STORE_TYPE='PKCS12'
+$env:SERVER_SSL_KEY_STORE=Join-Path $private 'intranet.p12'
+$env:SERVER_SSL_KEY_STORE_PASSWORD=[IO.File]::ReadAllText((Join-Path $private 'intranet-store-password.txt')).Trim()
+$env:SERVER_SSL_KEY_ALIAS='logimarui-intranet'
+$env:JPA_DDL_AUTO='validate'
+Ensure-ProductionFrontendBuild
+$script:trust=Join-Path $private 'core-truststore.jks'
+if(!(Test-Path -LiteralPath $trust)){
+    Copy-Item -LiteralPath (Join-Path $javaHome 'lib/security/cacerts') -Destination $trust
+    & (Join-Path $javaHome 'bin/keytool.exe') -importcert -noprompt -alias logimarui-iiam-local -file (Join-Path $private 'localhost.crt') -keystore $trust -storepass changeit
+    if($LASTEXITCODE -ne 0){throw 'Local certificate trust setup failed'}
+}
+}
+if($Action -ne 'stop'){Initialize-ProductionLaunch}
 if($Action -in @('stop','restart')){
     $coreProcessId=0
     $process=$null
@@ -91,43 +155,6 @@ if($Action -in @('stop','restart')){
     Remove-Item -LiteralPath $corePidFile -ErrorAction SilentlyContinue
     foreach($record in $records){Remove-Item -LiteralPath (Join-Path $runtimePids ($record.serviceId+'.pid')) -ErrorAction SilentlyContinue}
     if($Action -eq 'stop'){Write-Output 'Integrated PROD stopped. PostgreSQL remains running.';return}
-}
-function LoadEnvironment([string]$Path) {
-    foreach($line in Get-Content -LiteralPath $Path){
-        if($line -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$'){
-            [Environment]::SetEnvironmentVariable($matches[1],$matches[2],'Process')
-        }
-    }
-}
-LoadEnvironment (Join-Path $workspace '.env')
-LoadEnvironment (Join-Path $private 'core-client.properties')
-$env:LOGIMARUI_PROFILE='local';$env:SPRING_PROFILES_ACTIVE='local'
-$env:LOGIMARUI_ROOT=$workspace;$env:LOGIMARUI_SERVICES_ROOT=Join-Path $workspace 'logimarui_services'
-$env:CORE_API_PORT='443';$env:CORE_PUBLIC_ORIGIN='https://logistica.imaruileste.dominiolocal'
-# Temporary PROD policy: every live authenticated session can use Core and gateway services.
-$env:CORE_AUTHORIZATION_PERMISSIONS_REQUIRED='false'
-$env:APP_SERVER_HTTP_REDIRECT_ENABLED='true';$env:APP_SERVER_HTTP_REDIRECT_PORT='80'
-$env:LOGIMARUI_NEXT_DIST_DIR='.next-iiam-production';$env:LOGIMARUI_TSCONFIG_PATH='tsconfig.iiam-production.json'
-$env:APP_CORS_ALLOWED_ORIGINS='https://logistica.imaruileste.dominiolocal,https://localhost'
-$env:APP_FRONTEND_URL='http://127.0.0.1:8091';$env:FRONTEND_PORT='8091'
-$env:NEXT_PUBLIC_GATEWAY_URL=''
-$env:NEXT_PUBLIC_CORE_API_URL='';$env:NEXT_PUBLIC_API_URL='';$env:NEXT_PUBLIC_BACKEND_URL=''
-$env:SERVICE_FRONTEND_COMMAND='npm run start'
-$env:SERVICE_IIAM_ENABLED='true';$env:SERVICE_IIAM_START_ON_BOOT='true'
-$env:SERVICE_IIAM_ENV_FILE=Join-Path $private 'iiam.properties'
-$env:SERVICE_IIAM_JAR=Join-Path $private '../../logimarui_services/imarui-identity-and-access-manager-service/target/imarui-iam-service-0.0.1-SNAPSHOT.jar'
-$env:SERVICE_IIAM_JAVA=Join-Path $javaHome 'bin/java.exe'
-$env:SERVER_SSL_ENABLED='true';$env:SERVER_SSL_KEY_STORE_TYPE='PKCS12'
-$env:SERVER_SSL_KEY_STORE=Join-Path $private 'intranet.p12'
-$env:SERVER_SSL_KEY_STORE_PASSWORD=[IO.File]::ReadAllText((Join-Path $private 'intranet-store-password.txt')).Trim()
-$env:SERVER_SSL_KEY_ALIAS='logimarui-intranet'
-$env:JPA_DDL_AUTO='validate'
-if (!(Test-Path -LiteralPath (Join-Path $core '../logImarui-frontend/.next-iiam-production/BUILD_ID'))) { throw 'Build the isolated production frontend first' }
-$trust=Join-Path $private 'core-truststore.jks'
-if(!(Test-Path -LiteralPath $trust)){
-    Copy-Item -LiteralPath (Join-Path $javaHome 'lib/security/cacerts') -Destination $trust
-    & (Join-Path $javaHome 'bin/keytool.exe') -importcert -noprompt -alias logimarui-iiam-local -file (Join-Path $private 'localhost.crt') -keystore $trust -storepass changeit
-    if($LASTEXITCODE -ne 0){throw 'Local certificate trust setup failed'}
 }
 if(Get-NetTCPConnection -State Listen -LocalPort 443 -ErrorAction SilentlyContinue){throw 'PROD HTTPS port already occupied'}
 $artifact=Join-Path $core 'target/logimarui-core-api-0.0.1-SNAPSHOT.jar'
