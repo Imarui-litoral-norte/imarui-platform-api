@@ -10,7 +10,8 @@ $backup=Join-Path $workspace ('.runtime/launcher-install-'+(Get-Date -Format 'yy
 New-Item -ItemType Directory -Path $backup -Force | Out-Null
 $manifest=@()
 foreach($name in @('executar-core.bat','refresh.bat','Finish.bat','logimarui-core-api-lifecycle.ps1')){
-    $group=if($name -eq 'logimarui-core-api-lifecycle.ps1'){$Environment}else{'common'}
+    $profileTemplate=Join-Path (Join-Path $templates $Environment) $name
+    $group=if(Test-Path -LiteralPath $profileTemplate){$Environment}else{'common'}
     $source=Join-Path (Join-Path $templates $group) $name
     $target=Join-Path $workspace $name
     if(!(Test-Path -LiteralPath $source)){throw ('Template ausente: '+$name)}

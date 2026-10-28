@@ -19,15 +19,23 @@ function curl.exe {
     $global:launcherTestState.requests++;$global:LASTEXITCODE=0
     if($global:launcherTestState.failNextProbe){$global:launcherTestState.failNextProbe=$false;'503'}else{'200'}
 }
-function npm.cmd {
-    $global:launcherTestState.builds++
-    if($global:launcherTestState.failBuild){$global:LASTEXITCODE=1;return}
-    Set-Content -LiteralPath (Join-Path $fixture 'logImarui-frontend/.next-iiam-production/BUILD_ID') -Value 'rebuilt-fixture'
-    $global:LASTEXITCODE=0
-}
 function Start-Process {
     param($FilePath,$ArgumentList,$WorkingDirectory,$WindowStyle,[switch]$PassThru,$RedirectStandardOutput,$RedirectStandardError)
     if($WindowStyle -ne 'Hidden'){throw 'Background launch must be hidden'}
+    if($FilePath -eq $env:ComSpec){
+        if(($ArgumentList -join ' ') -notlike '*--webpack*'){throw 'Production build must use Webpack'}
+        $global:launcherTestState.builds++
+        $code=if($global:launcherTestState.failBuild){1}else{0}
+        if(!$code){
+            $directory=Join-Path (Join-Path $fixture 'logImarui-frontend') $env:LOGIMARUI_NEXT_DIST_DIR
+            New-Item -ItemType Directory -Path $directory -Force|Out-Null
+            Set-Content -LiteralPath (Join-Path $directory 'BUILD_ID') -Value ('fixture-build-'+$global:launcherTestState.builds)
+        }
+        $builder=[pscustomobject]@{Id=777;Handle=[IntPtr]::Zero;ExitCode=$code}
+        $builder|Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {param([int]$Timeout) return $true}
+        $builder|Add-Member -MemberType ScriptMethod -Name Refresh -Value {}
+        return $builder
+    }
     $global:launcherTestState.snapshot=[pscustomobject]@{ProcessId=123;Name='java.exe';CommandLine=('java -jar "'+$artifact+'"')}
     $global:launcherTestState.listening=$true
     [pscustomobject]@{Id=123}
@@ -78,17 +86,34 @@ if($global:launcherTestState.requests -ne ($before+4) -or !$global:launcherTestS
 $before=$global:launcherTestState.requests
 & $launcher -Action restart
 if($global:launcherTestState.stopped.Count -ne 2 -or $global:launcherTestState.requests -ne ($before+3) -or !$global:launcherTestState.listening){throw 'Restart failed'}
-# 8. Missing frontend build is generated before restarting.
-Remove-Item -LiteralPath (Join-Path $fixture 'logImarui-frontend/.next-iiam-production/BUILD_ID')
+# 8. An existing valid build does not prevent building the newest frontend.
+$activeBefore=[IO.File]::ReadAllText((Join-Path $private 'frontend-active-dist.txt'))
+if(!(Test-Path (Join-Path (Join-Path $fixture 'logImarui-frontend') ($activeBefore+'/BUILD_ID')))){throw 'Active release missing'}
 & $launcher -Action restart
-if($global:launcherTestState.builds -ne 1 -or $global:launcherTestState.stopped.Count -ne 3){throw 'Automatic frontend build failed'}
+if($global:launcherTestState.builds -ne 3 -or $global:launcherTestState.stopped.Count -ne 3 -or [IO.File]::ReadAllText((Join-Path $private 'frontend-active-dist.txt')) -eq $activeBefore){throw 'Existing stale frontend was reused'}
 
 # 9. A failed build must preserve the running Core and its managed processes.
-Remove-Item -LiteralPath (Join-Path $fixture 'logImarui-frontend/.next-iiam-production/BUILD_ID')
+$activeBefore=[IO.File]::ReadAllText((Join-Path $private 'frontend-active-dist.txt'))
 $global:launcherTestState.failBuild=$true
 try{& $launcher -Action restart;throw 'Failed build accepted'}catch{
     if($_.Exception.Message -notlike '*Falha ao gerar o frontend*'){throw}
 }
 if($global:launcherTestState.stopped.Count -ne 3 -or !$global:launcherTestState.listening){throw 'Failed build stopped the running Core'}
-Write-Output 'PASS: 9 isolated PROD launcher regression scenarios; no real processes changed.'
+if([IO.File]::ReadAllText((Join-Path $private 'frontend-active-dist.txt')) -ne $activeBefore){throw 'Failed build replaced the active release'}
+
+# 10. A failed build must also terminate execution inside the root log pipeline.
+try{& $launcher -Action restart | ForEach-Object {[string]$_|Out-Null};throw 'Pipeline accepted a failed build'}catch{
+    if($_.Exception.Message -notlike '*Falha ao gerar o frontend*'){throw}
+}
+if($global:launcherTestState.stopped.Count -ne 3){throw 'Pipeline continued after build failure'}
+
+# 11. A simultaneous click cannot stop or start a second operation.
+$held=[IO.File]::Open((Join-Path $private 'lifecycle.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+try{
+    try{& $launcher -Action stop;throw 'Concurrent operation accepted'}catch{
+        if($_.Exception.Message -notlike '*em andamento*'){throw}
+    }
+}finally{$held.Dispose()}
+if($global:launcherTestState.stopped.Count -ne 3){throw 'Concurrent click modified processes'}
+Write-Output 'PASS: 11 isolated PROD launcher regression scenarios; no real processes changed.'
 Write-Output ('Fixture: '+$fixture)

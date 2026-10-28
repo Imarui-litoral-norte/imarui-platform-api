@@ -4,27 +4,69 @@ $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $core=Join-Path $workspace 'logimarui-core-api'
 $private=[IO.Path]::GetFullPath($RuntimeDirectory)
 $javaHome='C:\Users\lucas.l\.jdks\ms-17.0.18'
+$operationLock=$null
+try {
+try{$operationLock=[IO.File]::Open((Join-Path $private 'lifecycle.lock'),[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)}catch{throw 'Ja existe uma inicializacao ou parada do PROD em andamento. Aguarde a conclusao.'}
 . (Join-Path $PSScriptRoot 'managed-runtime-ownership.ps1')
 function Ensure-ProductionFrontendBuild {
     $frontend=Join-Path $workspace 'logImarui-frontend'
-    $buildId=Join-Path $frontend '.next-iiam-production/BUILD_ID'
-    if(Test-Path -LiteralPath $buildId){return}
-    $buildLog=Join-Path $private 'production-frontend-build.log'
-    Write-Output 'Build de producao do frontend ausente. Gerando automaticamente antes de iniciar/reiniciar...'
-    Push-Location $frontend
-    $previousErrorPreference=$ErrorActionPreference
-    try{
-        # npm/Next warnings on stderr must be logged without aborting PowerShell 5.
-        $ErrorActionPreference='Continue'
-        & npm.cmd run build 2>&1 | ForEach-Object {
-            Add-Content -LiteralPath $buildLog -Value ([string]$_) -Encoding UTF8
+    $release=(Get-Date -Format 'yyyyMMdd-HHmmss')+'-'+[guid]::NewGuid().ToString('N').Substring(0,8)
+    $script:pendingFrontendDist='.runtime/iiam-releases/'+$release
+    $releaseDirectory=Join-Path $frontend $script:pendingFrontendDist
+    $releaseRoot=Split-Path -Parent $releaseDirectory
+    New-Item -ItemType Directory -Force -Path $releaseRoot | Out-Null
+    $activeFile=Join-Path $private 'frontend-active-dist.txt'
+    $script:previousFrontendDist=if(Test-Path -LiteralPath $activeFile){[IO.File]::ReadAllText($activeFile).Trim()}else{'.next-iiam-production'}
+    # Each build has its own output and type configuration. Never overwrite the
+    # files currently served by Next or reuse an old BUILD_ID as freshness proof.
+    $env:LOGIMARUI_NEXT_DIST_DIR=$script:pendingFrontendDist
+    $env:LOGIMARUI_TSCONFIG_PATH='.runtime/iiam-releases/'+$release+'.tsconfig.json'
+    @{
+        extends='../../tsconfig.json'
+        compilerOptions=@{incremental=$false}
+        include=@('../../next-env.d.ts','../../src/**/*.ts','../../src/**/*.tsx','../../src/**/*.js','../../src/**/*.jsx',('./'+$release+'/types/**/*.ts'),('./'+$release+'/dev/types/**/*.ts'))
+        exclude=@('../../node_modules')
+    }|ConvertTo-Json -Depth 4|Set-Content -LiteralPath (Join-Path $frontend $env:LOGIMARUI_TSCONFIG_PATH) -Encoding UTF8
+    $buildLog=Join-Path $private ('frontend-build-'+$release+'.log')
+    $buildErrorLog=Join-Path $private ('frontend-build-'+$release+'.err.log')
+    Write-Output ('Gerando frontend atualizado com Webpack. O PROD atual continua ativo. Log: '+$buildLog)
+    $builder=Start-Process -FilePath $env:ComSpec -ArgumentList @('/d','/c','npm.cmd run build -- --webpack') -WorkingDirectory $frontend -WindowStyle Hidden -PassThru -RedirectStandardOutput $buildLog -RedirectStandardError $buildErrorLog
+    $null=$builder.Handle
+    $deadline=(Get-Date).AddMinutes(15)
+    $checkpoint=Get-Date
+    while(!$builder.WaitForExit(1000)){
+        if((Get-Date) -gt $deadline){
+            & taskkill.exe /PID $builder.Id /T /F *> $null
+            throw ('Timeout no build do frontend. Servidor atual preservado. Log: '+$buildErrorLog)
         }
-        $ErrorActionPreference=$previousErrorPreference
-        if($LASTEXITCODE -ne 0 -or !(Test-Path -LiteralPath $buildId)){
-            throw 'Falha ao gerar o frontend. Servidor existente preservado. Consulte .runtime/iiam/production-frontend-build.log'
-        }
-    }finally{$ErrorActionPreference=$previousErrorPreference;Pop-Location}
-    Write-Output 'Build de producao do frontend concluido.'
+        if(((Get-Date)-$checkpoint).TotalSeconds -ge 15){Write-Output 'Compilando frontend com Webpack; aguardando conclusao...';$checkpoint=Get-Date}
+    }
+    $builder.Refresh()
+    $buildId=Join-Path $releaseDirectory 'BUILD_ID'
+    if($builder.ExitCode -ne 0 -or !(Test-Path -LiteralPath $buildId)){
+        throw ('Falha ao gerar o frontend. Servidor atual preservado. Consulte '+$buildLog+' e '+$buildErrorLog)
+    }
+    @{workspace=$frontend;createdAt=(Get-Date -Format o);buildId=[IO.File]::ReadAllText($buildId).Trim()}|ConvertTo-Json|Set-Content -LiteralPath (Join-Path $releaseDirectory '.logimarui-release.json') -Encoding UTF8
+    Write-Output ('Build atualizado concluido: '+$release+'.')
+}
+function Save-FrontendRelease {
+    [IO.File]::WriteAllText((Join-Path $private 'frontend-active-dist.txt'),$script:pendingFrontendDist)
+    $frontend=Join-Path $workspace 'logImarui-frontend'
+    $releaseRoot=[IO.Path]::GetFullPath((Join-Path $frontend '.runtime/iiam-releases'))
+    foreach($directory in @(Get-ChildItem -LiteralPath $releaseRoot -Directory)){
+        try{
+        $relative='.runtime/iiam-releases/'+$directory.Name
+        if($relative -in @($script:pendingFrontendDist,$script:previousFrontendDist)){continue}
+        if($directory.Name -notmatch '^\d{8}-\d{6}-[a-f0-9]{8}$'){continue}
+        $marker=Join-Path $directory.FullName '.logimarui-release.json'
+        if(!(Test-Path -LiteralPath $marker)){continue}
+        $metadata=Get-Content -LiteralPath $marker -Raw|ConvertFrom-Json
+        $resolved=[IO.Path]::GetFullPath($directory.FullName)
+        if($metadata.workspace -ne $frontend -or !$resolved.StartsWith($releaseRoot+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){continue}
+        Remove-Item -LiteralPath $resolved -Recurse -Force
+        Remove-Item -LiteralPath ($resolved+'.tsconfig.json') -ErrorAction SilentlyContinue
+        }catch{Write-Warning ('Nao foi possivel limpar um build antigo: '+$_.Exception.Message)}
+    }
 }
 function Test-CoreIdentity($Snapshot){
     if(!$Snapshot){return $false}
@@ -114,6 +156,7 @@ if(!(Test-Path -LiteralPath $trust)){
 }
 if($Action -ne 'stop'){Initialize-ProductionLaunch}
 if($Action -in @('stop','restart')){
+    if($Action -eq 'restart'){Write-Output 'Reiniciando os servicos para ativar o frontend atualizado...'}
     $coreProcessId=0
     $process=$null
     if(Test-Path -LiteralPath $corePidFile){
@@ -165,3 +208,5 @@ $process=Start-Process -FilePath (Join-Path $javaHome 'bin/java.exe') -ArgumentL
 [IO.File]::WriteAllText((Join-Path $private 'core-integrated.pid'),[string]$process.Id)
 Write-Output ('Core PROD launched, PID '+$process.Id+'. Aguardando prontidao...')
 Wait-IntegratedReady $process.Id
+Save-FrontendRelease
+}finally{if($operationLock){$operationLock.Dispose()}}

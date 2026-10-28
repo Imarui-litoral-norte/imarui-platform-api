@@ -23,8 +23,16 @@ if(Test-Path -LiteralPath (Join-Path $PSScriptRoot '.runtime/iiam/iiam.propertie
                 # Start-Process -Wait also waits for the persistent Java children.
                 # Wait only for the elevated launcher to report readiness/stop.
                 $null=$elevated.Handle
-                $elevated.WaitForExit()
+                $progressLog=Join-Path $PSScriptRoot '.runtime/logs/logimarui-core-api-launcher.log'
+                $lastProgress=''
+                while(!$elevated.WaitForExit(1000)){
+                    if(Test-Path -LiteralPath $progressLog){
+                        $progress=Get-Content -LiteralPath $progressLog -Tail 1 -Encoding UTF8
+                        if($progress -and $progress -ne $lastProgress){Write-Host $progress;$lastProgress=$progress}
+                    }
+                }
                 $elevated.Refresh()
+                if(Test-Path -LiteralPath $progressLog){Get-Content -LiteralPath $progressLog -Tail 1 -Encoding UTF8|Write-Host}
                 exit $elevated.ExitCode
             }catch{
                 throw ('Nao foi possivel obter permissao de administrador. Execute o BAT como administrador. '+$_.Exception.Message)
