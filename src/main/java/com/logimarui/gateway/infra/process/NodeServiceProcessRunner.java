@@ -57,6 +57,11 @@ public class NodeServiceProcessRunner implements ServiceProcessRunner {
                     .redirectError(ProcessBuilder.Redirect.appendTo(logFile));
 
             injectPortEnvironment(service, allocatedPort, processBuilder);
+            DatabaseMonitoringLaunchEnvironment.configure(service, processBuilder);
+            if (ManagedServiceIds.DATABASE_MONITORING.equals(service.getId())) {
+                log.info("[Supervisor] Monitoring: diretorio validado na sessao do Gateway: {}",
+                        processBuilder.environment().get("MONITOR_PATH"));
+            }
 
             process = processBuilder.start();
             log.info(
