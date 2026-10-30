@@ -12,6 +12,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import org.springdoc.core.annotations.ParameterObject;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -32,6 +35,17 @@ public class ReceivablesController {
     @Operation(summary = "Consultar títulos paginados com resumo dos mesmos filtros e cobertura")
     public ReceivablesResponse.Dashboard titles(@ParameterObject @ModelAttribute ReceivablesFilterRequest filters) {
         return ReceivablesResponse.dashboard(service.report(filters.query(service.today())));
+    }
+
+    @GetMapping(value = "/titles/export", produces = "text/csv;charset=UTF-8")
+    @Operation(summary = "Exportar todos os títulos dos filtros e ordenação aplicados, sem paginação")
+    public ResponseEntity<byte[]> export(@ParameterObject @ModelAttribute ReceivablesFilterRequest filters) {
+        var result = service.export(filters.query(service.today()));
+        return ResponseEntity.ok()
+                .contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"boletos-" + result.metadata().asOf() + ".csv\"")
+                .header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .body(ReceivablesCsv.render(result));
     }
 
     @GetMapping("/summary")

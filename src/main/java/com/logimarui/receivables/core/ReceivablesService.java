@@ -29,11 +29,20 @@ public class ReceivablesService {
 
     public Report report(ReceivablesQuery query) {
         Snapshot snapshot = snapshot(query);
-        List<Item> filtered = snapshot.items().stream().filter(matches(query)).sorted(comparator(query.sort())).toList();
+        List<Item> filtered = filteredItems(snapshot, query);
         int start = (int) Math.min((long) query.page() * query.size(), filtered.size());
         var items = filtered.subList(start, Math.min(start + query.size(), filtered.size()));
         return new Report(summary(filtered), List.copyOf(items), query.page(), query.size(), filtered.size(),
                 (filtered.size() + query.size() - 1) / query.size(), snapshot.metadata(), snapshot.filters());
+    }
+
+    public Export export(ReceivablesQuery query) {
+        Snapshot snapshot = snapshot(query);
+        return new Export(filteredItems(snapshot, query), snapshot.metadata());
+    }
+
+    private List<Item> filteredItems(Snapshot snapshot, ReceivablesQuery query) {
+        return snapshot.items().stream().filter(matches(query)).sorted(comparator(query.sort())).toList();
     }
 
     public Detail detail(Key key, ReceivablesQuery query, int paymentPage, int paymentSize) {

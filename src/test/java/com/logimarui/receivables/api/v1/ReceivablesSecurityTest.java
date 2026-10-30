@@ -36,6 +36,7 @@ class ReceivablesSecurityTest {
     @RequestMapping("/api/v1/receivables")
     static class Probe {
         @GetMapping("/titles") String titles() { return "ok"; }
+        @GetMapping("/titles/export") String export() { return "csv"; }
         @PostMapping("/titles") String write() { return "not allowed"; }
     }
 
@@ -49,6 +50,12 @@ class ReceivablesSecurityTest {
             context.refresh();
             var mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
             mvc.perform(get("/api/v1/receivables/titles")).andExpect(status().isUnauthorized());
+            mvc.perform(get("/api/v1/receivables/titles/export")).andExpect(status().isUnauthorized());
+            mvc.perform(get("/api/v1/receivables/titles/export").with(user("without-permission")))
+                    .andExpect(status().isForbidden());
+            mvc.perform(get("/api/v1/receivables/titles/export").with(user("reader")
+                    .authorities(new SimpleGrantedAuthority("logimarui-core.receivables.read"))))
+                    .andExpect(status().isOk()).andExpect(content().string("csv"));
             mvc.perform(get("/api/v1/receivables/titles").with(user("without-permission")))
                     .andExpect(status().isForbidden());
             mvc.perform(get("/api/v1/receivables/titles").with(user("reader")

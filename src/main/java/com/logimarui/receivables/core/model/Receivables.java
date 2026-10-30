@@ -39,6 +39,7 @@ public final class Receivables {
     public record Filters(List<Integer> units, List<Integer> sellers, List<Integer> supervisors) {}
     public record Report(Summary summary, List<Item> items, int page, int size, int total,
             int totalPages, Metadata metadata, Filters filters) {}
+    public record Export(List<Item> items, Metadata metadata) {}
     public record Detail(Item selected, List<Item> customerTitles, List<Payment> payments,
             int paymentPage, int paymentSize, int totalPayments, Metadata metadata) {}
     public record SourceHistory(String status, List<Payment> payments) {}

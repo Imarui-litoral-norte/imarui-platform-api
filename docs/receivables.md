@@ -41,6 +41,7 @@ Permissão RECEIVABLES_READ, módulo FINANCE, sincronizada pelo catálogo de per
 Atribuição a roles pelo fluxo de autorização vigente; bootstrap DEV mantém o comportamento do projeto para ADMIN.
 Proteção no SecurityFilterChain por URL e método GET; demais métodos recusados. RequiredPermission documenta OpenAPI.
 - GET /api/v1/receivables/titles: itens paginados + resumo de todo o filtro + metadados + opções.
+- GET /api/v1/receivables/titles/export: CSV de todos os títulos dos mesmos filtros e ordenação; page/size não limitam as linhas exportadas. Mesma permissão de leitura da lista, consulta única da carteira/histórico e Cache-Control: no-store.
 - GET /api/v1/receivables/summary: resumo e metadados.
 - GET /api/v1/receivables/filters: unidades, vendedores, supervisores elegíveis na carteira.
 - GET /api/v1/receivables/titles/{unit}/{customer}/{title}/{installment}: título, outros títulos do mesmo cliente/unidade e pagamentos paginados.
@@ -57,6 +58,10 @@ Para volumes maiores, medir memória/latência e avaliar projeção SQL/índice 
 ## Atualização e validação
 
 Botão Atualizar relê o banco via API. Mantém filtros/últimos dados durante falha e distingue erro de carteira vazia/histórico ausente.
+Botão Exportar CSV usa os filtros da última lista carregada com sucesso. Alterações no formulário exigem Aplicar filtros; exportação fica desabilitada durante consultas, após falha de consulta e para carteira filtrada vazia. Durante a exportação, filtros, atualização e paginação aguardam o término. Falhas de exportação são exibidas sem apagar a lista e permitem nova tentativa.
+O arquivo consulta novamente a fonte e pode refletir mudanças posteriores à lista; não é um snapshot congelado da consulta anterior. A janela histórica efetiva da lista é enviada explicitamente para a exportação.
+CSV: UTF-8 com BOM, separador ponto e vírgula, CRLF entre registros, cabeçalhos em português, datas dd/MM/yyyy, números decimais com vírgula sem símbolo/separador de milhar. Uma linha por título, sem rodapé de totais ou truncamento. Campos ausentes ficam vazios; aspas, quebras de linha e delimitadores são escapados. Textos de origem que possam ser interpretados como fórmulas recebem apóstrofo de proteção.
+Colunas incluem chave completa, cliente, emissão/entrega/vencimento, valores original/pendente, equipe, informações da origem, situação, dias em atraso, prioridade/motivos e histórico do cliente. Indicadores do histórico são repetidos por título do mesmo cliente/unidade e não devem ser somados como eventos independentes. Datas da janela histórica, referência e instante de consulta UTC acompanham cada linha.
 Não há importador, baixa, envio de cobrança, cadastro de atendimento ou alteração das fontes nesta feature.
 Testes: ReceivablesServiceTest, ReceivablesControllerTest, ReceivablesSecurityTest e JdbcReceivablesReadRepositoryIntegrationTest.
 Integração MySQL é opcional por RECEIVABLES_TEST_DB_URL, RECEIVABLES_TEST_DB_USERNAME, RECEIVABLES_TEST_DB_PASSWORD, conexão read-only. Sem credenciais, apenas esse cenário é ignorado.

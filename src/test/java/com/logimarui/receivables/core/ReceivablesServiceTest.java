@@ -86,6 +86,31 @@ class ReceivablesServiceTest {
                 .isInstanceOf(ReceivableNotFoundException.class);
     }
 
+    @Test void exportUsesEveryFilterAndSortWithoutPagination() {
+        var first = title(1, 10, 1, today.minusDays(2), "10.10");
+        var second = title(1, 10, 2, today.minusDays(2), "20.20");
+        var base = service(List.of(first, second, title(2, 10, 3, today.minusDays(2), "50"),
+                title(1, 20, 4, today.minusDays(2), "60"), title(1, 10, 5, today.plusDays(2), "70")),
+                new SourceHistory("EMPTY_PERIOD", List.of()));
+        var query = new ReceivablesQuery("Cliente 10", 1, 7, 9, today.minusDays(3), today.minusDays(1),
+                today.minusDays(11), today.minusDays(9), "OVERDUE", "OVERDUE", "AMOUNT_DESC", 1, 1,
+                LocalDate.of(2026, 1, 1), today.minusDays(1));
+        var report = base.report(query);
+        var export = base.export(query);
+        assertThat(report.total()).isEqualTo(2);
+        assertThat(report.items()).hasSize(1);
+        assertThat(export.items()).extracting(i -> i.title().key().title()).containsExactly(2L, 1L);
+        assertThat(export.items().get(1)).isEqualTo(report.items().get(0));
+        assertThat(export.metadata()).isEqualTo(report.metadata());
+        for (var excluded : List.of(
+                new ReceivablesQuery("absent", 1, 7, 9, null, null, null, null, "ALL", "ALL", null, 0, 25, query.historyFrom(), query.historyTo()),
+                new ReceivablesQuery("", 1, 8, 9, null, null, null, null, "ALL", "ALL", null, 0, 25, query.historyFrom(), query.historyTo()),
+                new ReceivablesQuery("", 1, 7, 8, null, null, null, null, "ALL", "ALL", null, 0, 25, query.historyFrom(), query.historyTo()),
+                new ReceivablesQuery("", 1, 7, 9, null, null, today, today, "ALL", "ALL", null, 0, 25, query.historyFrom(), query.historyTo()))) {
+            assertThat(base.export(excluded).items()).isEmpty();
+        }
+    }
+
     @Test void validatesDatesLimitsAndTreatsHistoryFailureAsUnavailable() {
         assertThatThrownBy(() -> query("INVALID", "ALL", 0, 10)).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> query("ALL", "ALL", 0, 101)).isInstanceOf(IllegalArgumentException.class);
