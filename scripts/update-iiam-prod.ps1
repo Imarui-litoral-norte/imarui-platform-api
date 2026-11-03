@@ -42,6 +42,9 @@ function Invoke-IiamSwap {
     Write-Output 'IIAM atualizado e respondendo. JAR anterior removido apos validacao.'
 }
 if($LibraryOnly){return}
+$principal=New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+if(!$principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)){throw 'Execute executar-iiam.bat e confirme a elevacao de administrador do Windows. IIAM atual preservado.'}
+
 $workspace=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $private=Join-Path $workspace '.runtime/iiam'
 $service=Join-Path $workspace 'logimarui_services/imarui-identity-and-access-manager-service'
@@ -58,7 +61,7 @@ try {
     function Stop-Iiam {
         $proc=Get-CimInstance Win32_Process -Filter ('ProcessId='+$script:currentPid)
         if(!$proc){return}
-        if($proc.Name -ne 'java.exe' -or !$proc.CommandLine.Contains($artifact)){throw 'Identidade do processo IIAM nao confirmada; parada cancelada.'}
+        if($proc.Name -ne 'java.exe' -or !$proc.CommandLine -or !$proc.CommandLine.Contains($artifact)){throw 'Identidade do processo IIAM nao confirmada; parada cancelada.'}
         $handle=Get-Process -Id $script:currentPid
         Stop-Process -Id $script:currentPid -ErrorAction Stop
         if(!$handle.WaitForExit(15000)){throw 'IIAM nao encerrou; artefato preservado.'}
