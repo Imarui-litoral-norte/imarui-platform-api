@@ -7,8 +7,8 @@ function Assert-IiamJar([string]$Path) {
         if(!$zip.GetEntry('BOOT-INF/classes/br/com/imarui/ima/IdentityServiceApplication.class')){throw 'JAR IIAM invalido.'}
         $migrations=@{}
         foreach($e in $zip.Entries | Where-Object {$_.FullName -like 'BOOT-INF/classes/db/migration/*' -and $_.Length -gt 0}) {
-            $stream=$e.Open();$sha=[Security.Cryptography.SHA256]::Create()
-            try{$migrations[$e.FullName]=[Convert]::ToBase64String($sha.ComputeHash($stream))}finally{$stream.Dispose();$sha.Dispose()}
+            $stream=$e.Open();$sha=[Security.Cryptography.SHA256]::Create();$reader=New-Object IO.StreamReader($stream)
+            try{$migrations[$e.FullName]=[Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($reader.ReadToEnd().Replace("`r`n","`n").Replace("`r","`n"))))}finally{$reader.Dispose();$stream.Dispose();$sha.Dispose()}
         }
         return $migrations
     }finally{$zip.Dispose()}
@@ -72,8 +72,9 @@ try {
         foreach($line in Get-Content -LiteralPath (Join-Path $private 'iiam.properties')) {
             if($line -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
                 # Java properties escaping used by the managed runner.
+                $configKey=$matches[1]
                 $value=[regex]::Replace($matches[2],'\\(u[0-9a-fA-F]{4}|.)',{param($m) switch($m.Groups[1].Value){'n'{"`n"};'r'{"`r"};'t'{"`t"};default{if($m.Groups[1].Value -match '^u') {[char][Convert]::ToInt32($m.Groups[1].Value.Substring(1),16)}else{$m.Groups[1].Value}}}})
-                $info.EnvironmentVariables[$matches[1]]=$value
+                $info.EnvironmentVariables[$configKey]=$value
             }
         }
         $info.EnvironmentVariables['SERVER_PORT']=[string]$port
