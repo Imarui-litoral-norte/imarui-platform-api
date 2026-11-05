@@ -181,10 +181,16 @@ if($Action -in @('stop','restart')){
     foreach($record in $records){
         foreach($ownedProcessId in @($record.listenerPid,$record.rootPid)|Select-Object -Unique){
             Assert-ManagedRuntimeProcessTime $record (Get-CimInstance Win32_Process -Filter ('ProcessId='+$ownedProcessId))
-            if(Get-Process -Id $ownedProcessId -ErrorAction SilentlyContinue){Stop-Process -Id $ownedProcessId -ErrorAction Stop}
+            if(Get-Process -Id $ownedProcessId -ErrorAction SilentlyContinue){
+                try { Stop-Process -Id $ownedProcessId -ErrorAction Stop }
+                catch { if(Get-CimInstance Win32_Process -Filter ('ProcessId='+$ownedProcessId)){throw} }
+            }
         }
     }
-    if($process){Stop-Process -Id $coreProcessId -ErrorAction Stop}
+    if($process){
+        try { Stop-Process -Id $coreProcessId -ErrorAction Stop }
+        catch { if(Get-CimInstance Win32_Process -Filter ('ProcessId='+$coreProcessId)){throw} }
+    }
     $deadline=(Get-Date).AddSeconds(30)
     do{
         $remaining=@(foreach($ownedProcessId in @($coreProcessId)+@($records.rootPid)+@($records.listenerPid)|Select-Object -Unique){
