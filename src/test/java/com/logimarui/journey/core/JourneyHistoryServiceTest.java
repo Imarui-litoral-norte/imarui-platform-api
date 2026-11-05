@@ -196,6 +196,43 @@ class JourneyHistoryServiceTest {
         assertThat(h.team().get(0).departureDate()).isEqualTo(DAY.plusDays(1));
     }
 
+    @Test void auditSelectionMatchesHistoryAndDoesNotCollapseDatesOrHelperContributions() {
+        stubTr(List.of(tr(DAY, 1L, 100L, "motorista", true, "FINALIZADO", false, false),
+                tr(DAY, 1L, 200L, "ajudante", true, "FINALIZADO", false, false),
+                tr(DAY, 1L, 201L, "ajudante", false, "FINALIZADO", true, false),
+                tr(DAY.plusDays(1), 1L, 100L, "motorista", null, "EM_ANDAMENTO", false, false)));
+        for (String population : List.of("motorista", "ajudante")) for (String expurge : List.of("all", "expurged", "not_expurged")) {
+            var query = query(DAY, DAY.plusDays(1), null, null, expurge);
+            var analysis = service.history("tr", query, "", "all", false, population);
+            var audit = service.auditSelection("tr", query, "", "all", population);
+            assertThat(audit.summary()).isEqualTo(analysis.summary());
+            assertThat(audit.maps()).hasSize((int) analysis.summary().distinctMaps());
+            assertThat(audit.maps().stream().mapToLong(m -> m.counts().total()).sum()).isEqualTo(analysis.summary().total());
+        }
+        var maps = service.auditSelection("tr", query(DAY, DAY.plusDays(1), null, null, "all"), "", "all", "motorista").maps();
+        assertThat(maps).hasSize(2);
+        assertThat(maps.get(0).key().date()).isEqualTo(DAY.plusDays(1));
+        assertThat(maps.get(0).members().get(0).result().lifecycleStatus()).isEqualTo("EM_ANDAMENTO");
+    }
+
+    @Test void effectiveAuditBaseExcludesExpurgedOpenUnknownAndConflictingMapResults() {
+        stubTr(List.of(tr(DAY, 1L, 100L, "motorista", true, "FINALIZADO", false, false),
+                tr(DAY, 2L, 100L, "motorista", false, "FINALIZADO", false, false),
+                tr(DAY, 3L, 100L, "motorista", true, "FINALIZADO", true, false),
+                tr(DAY, 4L, 100L, "motorista", false, "EM_ANDAMENTO", false, false),
+                tr(DAY, 5L, 100L, "motorista", null, "FINALIZADO", false, false)));
+        var query = query(DAY, DAY, null, null, "not_expurged");
+        var base = service.auditSelection("tr", query, "", "all", "motorista", true);
+        var analysis = service.history("tr", query, "", "all", false);
+        assertThat(base.maps()).hasSize(2);
+        assertThat(base.summary().total()).isEqualTo(analysis.summary().evaluated());
+        assertThat(base.summary().attained()).isEqualTo(analysis.summary().attained());
+        assertThat(base.summary().notAttained()).isEqualTo(1);
+        assertThat(base.summary().expurged()).isZero();
+        assertThat(base.summary().pending()).isZero();
+        assertThat(base.summary().unavailable()).isZero();
+    }
+
     private void stubTr(List<TrItem> rows) {
         when(reader.tr(any(), any())).thenAnswer(invocation -> rows.stream().filter(r ->
                 !r.context().date().isBefore(invocation.getArgument(0, LocalDate.class)) &&

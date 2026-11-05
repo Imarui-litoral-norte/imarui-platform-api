@@ -26,13 +26,20 @@ public class JourneyHistoryController {
             @RequestParam(required = false) Long map,
             @RequestParam(required = false) Long employeeCode,
             @RequestParam(required = false) String role,
-            @RequestParam(required = false) String expurge,
+            @RequestParam(required = false) String expurge, @RequestParam(required = false) String viewFilters,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "all") String scope,
             @RequestParam(defaultValue = "true") boolean includePrevious,
             @RequestParam(defaultValue = "motorista") String populationRole
     ) {
-        return service.history(indicator, new JourneyQuery(from, to, mode, map, employeeCode, role, expurge),
+        return service.history(indicator, new JourneyQuery(from, to, mode, map, employeeCode, role, expurge, JourneyViewFilterParser.parse(viewFilters)),
                 search, scope, includePrevious, populationRole);
+    }
+    @GetMapping("/{indicator}/filter-options")
+    public java.util.Map<String, java.util.Map<String, String>> options(@PathVariable String indicator,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+        @RequestParam @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+        @RequestParam(required = false) String mode) {
+        return service.filterOptions(indicator, new JourneyQuery(from, to, mode, null, null, null, "all"));
     }
 }

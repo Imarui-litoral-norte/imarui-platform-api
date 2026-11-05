@@ -104,6 +104,59 @@ public class JourneyHistoryService {
                 counts(selected, perMap), days(current, first, last, perMap), collaborators, List.copyOf(previous), team);
     }
 
+    /** Uses exactly the same selection, deduplication and grain as the history summary. */
+    public JourneyAudit.Selection auditSelection(String indicator, JourneyQuery query, String search,
+                                                 String scope, String populationRole) {
+        return auditSelection(indicator, query, search, scope, populationRole, false);
+    }
+
+    public JourneyAudit.Selection auditSelection(String indicator, JourneyQuery query, String search,
+                                                 String scope, String populationRole, boolean evaluatedOnly) {
+        if (!Set.of("tml", "tr", "ti", "jl").contains(indicator)) throw new IllegalArgumentException("Invalid indicator");
+        if (!Set.of("all", "d0", "earlier").contains(scope)) throw new IllegalArgumentException("Invalid scope");
+        if (!Set.of("motorista", "ajudante").contains(populationRole)) throw new IllegalArgumentException("Invalid populationRole");
+        if (indicator.equals("tr") && query.mode() != null) throw new IllegalArgumentException("TR does not support mode");
+        if (!indicator.equals("tr")) query.requireMode();
+        String role = query.role() == null ? populationRole : query.role();
+        LocalDate today = LocalDate.now(clock);
+        boolean perMap = indicator.equals("tr") || indicator.equals("jl") && "mpd".equals(query.mode());
+        LocalDate first = Collections.min(List.of(query.from().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), query.from().withDayOfMonth(1)));
+        LocalDate last = Collections.max(List.of(query.to().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).plusDays(5), query.to().with(TemporalAdjusters.lastDayOfMonth())));
+        List<Fact> selected = selectFacts(filterExpurge(read(indicator, query, first, min(last, today)),
+                query.expurge()), role, search, scope, today);
+        if (perMap) selected = coherentMapFacts(selected);
+        selected = selected.stream().filter(f -> within(f.context.date(), query.from(), query.to()))
+                .filter(f -> !evaluatedOnly || f.outcome == Outcome.ATTAINED || f.outcome == Outcome.NOT_ATTAINED).toList();
+        Map<JourneyAudit.Key, List<Fact>> groups = new LinkedHashMap<>();
+        selected.stream().filter(f -> f.context.map() != null).forEach(f -> groups
+                .computeIfAbsent(new JourneyAudit.Key(f.context.date(), f.context.map()), ignored -> new ArrayList<>()).add(f));
+        List<JourneyAudit.SelectedMap> maps = groups.entrySet().stream().map(entry -> {
+            List<Fact> facts = entry.getValue();
+            return new JourneyAudit.SelectedMap(entry.getKey(), facts.get(0).context.mapOrigin(),
+                    facts.stream().map(Fact::snapshot).filter(Objects::nonNull).max(LocalDateTime::compareTo).orElse(null),
+                    counts(facts, perMap), facts.stream().map(f -> f.context.employeeCode()).filter(Objects::nonNull).distinct().toList(),
+                    facts.stream().map(f -> new JourneyAudit.SelectedMember(f.context.employeeCode(), f.official, f.detail)).toList());
+        }).sorted(Comparator.comparing((JourneyAudit.SelectedMap m) -> m.key().date()).reversed()
+                .thenComparing(m -> m.key().map(), Comparator.reverseOrder())).toList();
+        return new JourneyAudit.Selection(counts(selected, perMap), maps);
+    }
+
+    public Map<String, Map<String, String>> filterOptions(String indicator, JourneyQuery query) {
+        var base = new JourneyQuery(query.from(), query.to(), query.mode(), query.map(), null, null, "all");
+        var options = new LinkedHashMap<String, Map<String, String>>();
+        for (String key : List.of("vehicles", "employees", "types", "reasons", "observations")) options.put(key, new TreeMap<>());
+        for (Fact f : read(indicator, base, query.from(), min(query.to(), LocalDate.now(clock)))) {
+            options.get("vehicles").put(JourneyViewFilters.value(f.context.vehicle()), f.context.vehicle() == null ? "(Veículo vazio)" : f.context.vehicle() + " · " + Objects.toString(f.context.plate(), "Sem placa"));
+            options.get("employees").put(JourneyViewFilters.value(f.context.employeeCode()), f.context.employeeCode() == null ? "(Matrícula vazia)" : f.context.employeeCode() + " · " + Objects.toString(f.context.employeeName(), "Sem nome"));
+            if (f.detail != null) {
+                if (f.detail.types() != null) options.get("types").put(f.detail.types(), f.detail.types());
+                if (f.detail.reasons() != null) options.get("reasons").put(f.detail.reasons(), f.detail.reasons());
+                if (f.detail.observations() != null) options.get("observations").put(f.detail.observations(), f.detail.observations());
+            }
+        }
+        return options;
+    }
+
     /** Reads bounded monthly chunks, discards heavyweight DTOs and keeps only compact facts. */
     private List<Fact> read(String indicator, JourneyQuery filters, LocalDate from, LocalDate to) {
         Map<String, Fact> unique = new LinkedHashMap<>();
@@ -126,7 +179,7 @@ public class JourneyHistoryService {
             }
             start = end.plusDays(1);
         }
-        return new ArrayList<>(unique.values());
+        return unique.values().stream().filter(f -> filters.viewFilters() == null || filters.viewFilters().matches(f.context, f.detail)).toList();
     }
 
     private static List<Fact> selectFacts(List<Fact> all, String role, String search, String scope, LocalDate today) {
@@ -157,7 +210,7 @@ public class JourneyHistoryService {
             Long seconds = r != null && !anomaly && r.seconds() != null && r.seconds() >= 0 &&
                     Set.of("FINALIZADO", "CONCLUIDO").contains(Objects.toString(r.lifecycleStatus(), "")) ? r.seconds() : null;
             return new Fact(c, snapshot.apply(item), outcome, e == null ? null : e.present(),
-                    anomaly, seconds, departure.apply(item) == null ? null : departure.apply(item).toLocalDate());
+                    anomaly, seconds, departure.apply(item) == null ? null : departure.apply(item).toLocalDate(), r, e);
         }).toList();
     }
 
@@ -181,7 +234,8 @@ public class JourneyHistoryService {
         return new Fact(a.context, a.snapshot, a.outcome == b.outcome ? a.outcome : Outcome.UNAVAILABLE,
                 Boolean.TRUE.equals(a.expurged) || Boolean.TRUE.equals(b.expurged) ? Boolean.TRUE :
                         Boolean.FALSE.equals(a.expurged) && Boolean.FALSE.equals(b.expurged) ? Boolean.FALSE : null,
-                a.anomaly || b.anomaly, Objects.equals(a.seconds, b.seconds) ? a.seconds : null, Objects.equals(a.departureDate, b.departureDate) ? a.departureDate : null);
+                a.anomaly || b.anomaly, Objects.equals(a.seconds, b.seconds) ? a.seconds : null, Objects.equals(a.departureDate, b.departureDate) ? a.departureDate : null,
+                Objects.equals(a.official, b.official) ? a.official : null, Objects.equals(a.detail, b.detail) ? a.detail : null);
     }
 
     /** A replicated map verdict must also stay consistent in each person's analytical series. */
@@ -190,7 +244,7 @@ public class JourneyHistoryService {
         facts.stream().filter(f -> f.context.map() != null && f.context.employeeCode() != null).forEach(f ->
                 outcomes.merge(mapIdentity(f.context), f.outcome, (a, b) -> a == b ? a : Outcome.UNAVAILABLE));
         return facts.stream().map(f -> f.context.map() == null || f.context.employeeCode() == null ? f :
-                new Fact(f.context, f.snapshot, outcomes.get(mapIdentity(f.context)), f.expurged, f.anomaly, f.seconds, f.departureDate)).toList();
+                new Fact(f.context, f.snapshot, outcomes.get(mapIdentity(f.context)), f.expurged, f.anomaly, f.seconds, f.departureDate, f.official, f.detail)).toList();
     }
 
     private static JourneyHistory.Counts counts(List<Fact> source, boolean perMap) {
@@ -244,5 +298,5 @@ public class JourneyHistoryService {
                 Objects.toString(c.employeeName(), ""), Objects.toString(c.employeeCode(), ""), Objects.toString(c.mapDriverCode(), "")));
     }
     private enum Outcome { ATTAINED, NOT_ATTAINED, PENDING, UNAVAILABLE }
-    private record Fact(OperationalContext context, LocalDateTime snapshot, Outcome outcome, Boolean expurged, boolean anomaly, Long seconds, LocalDate departureDate) {}
+    private record Fact(OperationalContext context, LocalDateTime snapshot, Outcome outcome, Boolean expurged, boolean anomaly, Long seconds, LocalDate departureDate, IndicatorResult official, Expurge detail) {}
 }

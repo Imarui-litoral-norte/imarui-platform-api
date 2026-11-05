@@ -10,8 +10,12 @@ public record JourneyQuery(
         Long map,
         Long employeeCode,
         String role,
-        String expurge
+        String expurge,
+        JourneyViewFilters viewFilters
 ) {
+    public JourneyQuery(LocalDate from, LocalDate to, String mode, Long map, Long employeeCode, String role, String expurge) {
+        this(from, to, mode, map, employeeCode, role, expurge, null);
+    }
     private static final Set<String> MODES = Set.of("ponto", "mpd");
     private static final Set<String> ROLES = Set.of("motorista", "ajudante");
     private static final Set<String> EXPURGE_FILTERS = Set.of("all", "expurged", "not_expurged");
